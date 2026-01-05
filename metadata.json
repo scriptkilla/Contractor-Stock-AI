@@ -1,0 +1,7 @@
+{
+  "name": "Contractor Stock AI",
+  "description": "An intelligent inventory management system with real-time barcode scanning and AI-powered product identification.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
