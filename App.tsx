@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Product } from './types';
 import { db } from './services/database';
 import Scanner from './components/Scanner';
@@ -21,20 +21,30 @@ import {
   Settings,
   Users,
   UserPlus,
-  MoreVertical,
   Mail,
   X,
   AlertTriangle,
   UserMinus,
   Shield,
   ShieldCheck,
-  UserCheck,
   Activity,
   User,
   Save,
   Hash,
   RefreshCcw,
-  Ban
+  Ban,
+  Camera,
+  Printer,
+  QrCode,
+  FileStack,
+  Ruler,
+  Maximize2,
+  Check,
+  Minus,
+  Plus as PlusIcon,
+  ToggleRight,
+  Eye,
+  Type
 } from 'lucide-react';
 
 interface TeamMember {
@@ -46,6 +56,7 @@ interface TeamMember {
   lastActive: string;
   initial: string;
   color: string;
+  imageUrl?: string;
 }
 
 interface PendingInvite {
@@ -70,7 +81,7 @@ const App: React.FC = () => {
     { id: '1', name: 'Sarah Wilson', email: 'sarah@contractorstock.ai', role: 'Owner', status: 'online', lastActive: 'Now', initial: 'SW', color: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400' },
     { id: '2', name: 'Michael Chen', email: 'm.chen@contractorstock.ai', role: 'Manager', status: 'online', lastActive: '2m ago', initial: 'MC', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400' },
     { id: '3', name: 'James Rodriguez', email: 'james.r@contractorstock.ai', role: 'Staff', status: 'offline', lastActive: 'Yesterday', initial: 'JR', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400' },
-    { id: '4', name: 'Alex Thompson', email: 'alex.t@contractorstock.ai', role: 'Staff', status: 'online', lastActive: 'Now', initial: 'AT', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' }
+    { id: '4', name: 'Alex Thompson', email: 'alex.t@contractorstock.ai', role: 'Staff', status: 'online', lastActive: 'Now', initial: 'AT', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-indigo-400' }
   ]);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<TeamMember | null>(null);
@@ -84,6 +95,21 @@ const App: React.FC = () => {
     { id: 'p2', email: 'kelly.m@contractorstock.ai', role: 'Manager', sentAt: '5 hours ago' }
   ]);
   const [isPendingInvitesModalOpen, setIsPendingInvitesModalOpen] = useState(false);
+
+  // Print Modal State
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printSelection, setPrintSelection] = useState<'all' | 'recent' | 'custom'>('all');
+  const [printFormat, setPrintFormat] = useState<'qr' | 'barcode' | 'tag'>('qr');
+  const [printSize, setPrintSize] = useState<'sm' | 'md' | 'lg'>('md');
+  const [printCopies, setPrintCopies] = useState(1);
+  const [printOptions, setPrintOptions] = useState({
+    showName: true,
+    showPrice: false,
+    showSku: true,
+    highContrast: true
+  });
+
+  const memberPhotoInputRef = useRef<HTMLInputElement>(null);
 
   // Lifted Theme State - Default to 'dark'
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
@@ -192,6 +218,16 @@ const App: React.FC = () => {
     }
   };
 
+  const handleMemberPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !memberToEdit) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setMemberToEdit({ ...memberToEdit, imageUrl: event.target?.result as string });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const filteredInventory = useMemo(() => {
     if (!inventorySearch.trim()) return products;
     const query = inventorySearch.toLowerCase();
@@ -257,6 +293,20 @@ const App: React.FC = () => {
             <p className="text-sm text-gray-500 dark:text-gray-400">Add product without scanning</p>
           </div>
           <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-emerald-400" />
+        </button>
+
+        <button 
+          onClick={() => setIsPrintModalOpen(true)}
+          className="flex items-center gap-4 p-5 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-amber-300 transition-all group"
+        >
+          <div className="p-3 bg-amber-50 dark:bg-amber-900/30 rounded-xl group-hover:bg-amber-100 transition-colors">
+            <Printer className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div className="text-left flex-1">
+            <h3 className="font-bold text-gray-800 dark:text-gray-100">Print Labels</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Batch print QR codes and asset tags</p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-amber-400" />
         </button>
       </div>
 
@@ -417,8 +467,12 @@ const App: React.FC = () => {
           {teamMembers.map((member) => (
             <div key={member.id} className="bg-white dark:bg-gray-900 p-4 rounded-[1.5rem] border border-gray-100 dark:border-gray-800 shadow-sm flex items-center gap-4 hover:border-indigo-100 transition-all group">
               <div className="relative">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-xl ${member.color}`}>
-                  {member.initial}
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-xl overflow-hidden ${member.imageUrl ? '' : member.color}`}>
+                  {member.imageUrl ? (
+                    <img src={member.imageUrl} className="w-full h-full object-cover" />
+                  ) : (
+                    member.initial
+                  )}
                 </div>
                 {member.status === 'online' && (
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white dark:border-gray-900 rounded-full">
@@ -563,11 +617,32 @@ const App: React.FC = () => {
       {memberToEdit && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 flex flex-col items-center">
-            <div className="w-24 h-24 rounded-3xl flex items-center justify-center font-bold text-3xl mb-6 shadow-xl relative overflow-hidden group">
-              <div className={`absolute inset-0 opacity-10 ${memberToEdit.color.split(' ')[0]}`} />
-              <div className={`${memberToEdit.color} w-full h-full flex items-center justify-center`}>
-                {memberToEdit.name.substring(0, 2).toUpperCase()}
+            <div className="relative group mb-6">
+              <div className="w-24 h-24 rounded-3xl flex items-center justify-center font-bold text-3xl shadow-xl relative overflow-hidden">
+                {memberToEdit.imageUrl ? (
+                  <img src={memberToEdit.imageUrl} className="w-full h-full object-cover" />
+                ) : (
+                  <>
+                    <div className={`absolute inset-0 opacity-10 ${memberToEdit.color.split(' ')[0]}`} />
+                    <div className={`${memberToEdit.color} w-full h-full flex items-center justify-center`}>
+                      {memberToEdit.name.substring(0, 2).toUpperCase()}
+                    </div>
+                  </>
+                )}
               </div>
+              <button 
+                onClick={() => memberPhotoInputRef.current?.click()}
+                className="absolute -bottom-2 -right-2 p-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-100 dark:border-gray-700 text-indigo-600 hover:scale-110 transition-transform z-10"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+              <input 
+                type="file" 
+                ref={memberPhotoInputRef} 
+                className="hidden" 
+                accept="image/*" 
+                onChange={handleMemberPhotoChange} 
+              />
             </div>
             
             <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-1">Edit Profile</h3>
@@ -722,7 +797,7 @@ const App: React.FC = () => {
       {/* Remove Member Modal */}
       {memberToDelete && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 text-center">
+          <div className="bg-white dark:bg-gray-900 w-full max-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 text-center">
             <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
               <AlertTriangle className="w-10 h-10 text-red-600 dark:text-red-500" />
             </div>
@@ -884,6 +959,170 @@ const App: React.FC = () => {
                   Add Product
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print Labels Modal */}
+      {isPrintModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6 animate-in fade-in duration-300 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 my-8">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center">
+                <Printer className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-gray-900 dark:text-white">Label Print Studio</h3>
+                <p className="text-xs text-gray-500 font-medium">Configure batch asset labels.</p>
+              </div>
+            </div>
+
+            <div className="space-y-6 mb-8">
+              {/* Asset Selection */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Asset Scope</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'all', label: 'All', icon: FileStack },
+                    { id: 'recent', label: 'Recent', icon: RefreshCcw },
+                    { id: 'custom', label: 'Filter', icon: Search }
+                  ].map((opt) => (
+                    <button 
+                      key={opt.id}
+                      onClick={() => setPrintSelection(opt.id as any)}
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all ${
+                        printSelection === opt.id 
+                          ? 'border-amber-600 bg-amber-50 dark:bg-amber-900/30 text-amber-600' 
+                          : 'border-gray-50 bg-gray-50 text-gray-400 dark:bg-gray-800 dark:border-gray-700'
+                      }`}
+                    >
+                      <opt.icon className="w-4 h-4" />
+                      <span className="text-[10px] font-bold">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Format Selection */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Label Format</label>
+                <div className="space-y-2">
+                  {[
+                    { id: 'qr', label: 'QR Code + Spec', icon: QrCode },
+                    { id: 'barcode', label: 'Asset Barcode', icon: Maximize2 },
+                    { id: 'tag', label: 'Industrial Tag', icon: Hash }
+                  ].map((opt) => (
+                    <button 
+                      key={opt.id}
+                      onClick={() => setPrintFormat(opt.id as any)}
+                      className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border-2 transition-all ${
+                        printFormat === opt.id 
+                          ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' 
+                          : 'border-gray-50 bg-gray-50 text-gray-400 dark:bg-gray-800 dark:border-gray-700'
+                      }`}
+                    >
+                      <opt.icon className="w-5 h-5" />
+                      <span className="text-xs font-bold flex-1 text-left">{opt.label}</span>
+                      {printFormat === opt.id && <Check className="w-4 h-4" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Advanced Options Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Copies</label>
+                  <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 p-2 rounded-2xl border dark:border-gray-700">
+                    <button 
+                      onClick={() => setPrintCopies(Math.max(1, printCopies - 1))}
+                      className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 shadow-sm"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="flex-1 text-center font-black text-sm">{printCopies}</span>
+                    <button 
+                      onClick={() => setPrintCopies(printCopies + 1)}
+                      className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 shadow-sm"
+                    >
+                      <PlusIcon className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Size</label>
+                  <select 
+                    value={printSize}
+                    onChange={(e) => setPrintSize(e.target.value as any)}
+                    className="w-full p-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-50 dark:border-gray-700 rounded-2xl text-[10px] font-bold text-gray-500"
+                  >
+                    <option value="sm">1" x 1"</option>
+                    <option value="md">2" x 1"</option>
+                    <option value="lg">4" x 2"</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Toggles */}
+              <div className="space-y-3 bg-gray-50/50 dark:bg-gray-800/50 p-4 rounded-3xl border border-gray-100 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Type className="w-3 h-3 text-gray-400" />
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Include Name</span>
+                  </div>
+                  <button 
+                    onClick={() => setPrintOptions(prev => ({...prev, showName: !prev.showName}))}
+                    className={`w-10 h-5 rounded-full flex items-center px-1 transition-colors ${printOptions.showName ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  >
+                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${printOptions.showName ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Hash className="w-3 h-3 text-gray-400" />
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Include SKU</span>
+                  </div>
+                  <button 
+                    onClick={() => setPrintOptions(prev => ({...prev, showSku: !prev.showSku}))}
+                    className={`w-10 h-5 rounded-full flex items-center px-1 transition-colors ${printOptions.showSku ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  >
+                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${printOptions.showSku ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-3 h-3 text-gray-400" />
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Include Price</span>
+                  </div>
+                  <button 
+                    onClick={() => setPrintOptions(prev => ({...prev, showPrice: !prev.showPrice}))}
+                    className={`w-10 h-5 rounded-full flex items-center px-1 transition-colors ${printOptions.showPrice ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  >
+                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${printOptions.showPrice ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => {
+                  alert(`Queueing ${products.length} labels for printing (x${printCopies} copies)...`);
+                  setIsPrintModalOpen(false);
+                }}
+                disabled={products.length === 0}
+                className="w-full py-4 bg-amber-600 text-white rounded-2xl font-bold shadow-xl shadow-amber-200 dark:shadow-none hover:bg-amber-700 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Printer className="w-4 h-4" />
+                Generate {products.length * printCopies} Labels
+              </button>
+              <button 
+                onClick={() => setIsPrintModalOpen(false)}
+                className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-[0.98] transition-all"
+              >
+                Close Studio
+              </button>
             </div>
           </div>
         </div>
