@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Product } from '../types';
 import { analyzeProductImage } from '../services/geminiService';
@@ -115,6 +116,42 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
       : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800'}
   `;
 
+  // Helper to render a pseudo-barcode SVG based on SKU string
+  const renderBarcode = (sku: string) => {
+    if (!sku) return null;
+    const bars = [];
+    let currentX = 0;
+    // We generate bars based on character codes to make each barcode unique to the SKU
+    for (let i = 0; i < sku.length; i++) {
+      const code = sku.charCodeAt(i);
+      const w1 = (code % 3) + 1;
+      const g = (code % 2) + 1;
+      const w2 = ((code >> 2) % 3) + 1;
+      
+      bars.push(<rect key={`${i}-1`} x={currentX} y="0" width={w1} height="40" fill="currentColor" />);
+      currentX += w1 + g;
+      bars.push(<rect key={`${i}-2`} x={currentX} y="0" width={w2} height="40" fill="currentColor" />);
+      currentX += w2 + g;
+    }
+    
+    return (
+      <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-500">
+        <div className="flex flex-col items-center bg-gray-50 dark:bg-gray-950 p-3 rounded-xl border border-gray-100 dark:border-gray-800 shadow-inner">
+          <svg 
+            width="100%" 
+            height="24" 
+            viewBox={`0 0 ${currentX} 40`} 
+            preserveAspectRatio="none" 
+            className="text-gray-900 dark:text-gray-100 opacity-80"
+          >
+            {bars}
+          </svg>
+          <span className="text-[8px] font-mono text-gray-400 mt-1.5 tracking-[0.3em] font-bold uppercase">{sku}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl p-8 max-w-2xl mx-auto border border-gray-100 dark:border-gray-800 transition-colors duration-300">
       <div className="flex justify-between items-start mb-8">
@@ -175,6 +212,8 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
                 />
                 {!initialProduct && isAnalyzing && <Sparkles className="w-4 h-4 text-indigo-400 absolute right-4 top-1/2 -translate-y-1/2 animate-pulse" />}
               </div>
+              {/* Visual Barcode Display */}
+              {formData.sku && renderBarcode(formData.sku)}
             </div>
             
             <div className="space-y-1.5">

@@ -44,7 +44,9 @@ import {
   Plus as PlusIcon,
   ToggleRight,
   Eye,
-  Type
+  Type,
+  Palette,
+  Layout
 } from 'lucide-react';
 
 interface TeamMember {
@@ -100,6 +102,7 @@ const App: React.FC = () => {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printSelection, setPrintSelection] = useState<'all' | 'recent' | 'custom'>('all');
   const [printFormat, setPrintFormat] = useState<'qr' | 'barcode' | 'tag'>('qr');
+  const [printTemplate, setPrintTemplate] = useState<'modern' | 'industrial' | 'compact'>('modern');
   const [printSize, setPrintSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [printCopies, setPrintCopies] = useState(1);
   const [printOptions, setPrintOptions] = useState({
@@ -825,6 +828,63 @@ const App: React.FC = () => {
     </div>
   );
 
+  const LabelPreview = () => {
+    const mockProduct = products[0] || { sku: 'SKU-88219-X', name: 'Premium Copper Fitting', price: 12.99 };
+    
+    return (
+      <div className="space-y-3">
+        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Live Design Preview</label>
+        <div className={`
+          relative bg-white border shadow-inner rounded-xl flex flex-col items-center justify-center overflow-hidden
+          ${printSize === 'sm' ? 'w-32 h-32' : printSize === 'md' ? 'w-48 h-24' : 'w-64 h-32'}
+          ${printOptions.highContrast ? 'border-black' : 'border-gray-200'}
+          mx-auto transition-all duration-500
+        `}>
+          {/* Template: Modern */}
+          {printTemplate === 'modern' && (
+            <div className="w-full h-full p-3 flex flex-col items-center justify-between text-center">
+              {printOptions.showName && <h4 className="text-[10px] font-black uppercase text-gray-900 line-clamp-1">{mockProduct.name}</h4>}
+              {printFormat === 'qr' && <QrCode className="w-10 h-10 text-gray-900 my-1" />}
+              {printFormat === 'barcode' && <div className="w-full h-8 bg-black/5 flex items-center justify-center text-[8px] font-mono text-gray-400">||||||||||||||||||||</div>}
+              {printFormat === 'tag' && <div className="w-10 h-10 border-4 border-gray-900 rounded-full flex items-center justify-center font-black text-xs">C.S.</div>}
+              <div className="flex justify-between items-end w-full">
+                {printOptions.showSku && <span className="text-[8px] font-bold text-gray-500">{mockProduct.sku}</span>}
+                {printOptions.showPrice && <span className="text-[10px] font-black text-indigo-600">${mockProduct.price}</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Template: Industrial */}
+          {printTemplate === 'industrial' && (
+            <div className="w-full h-full bg-gray-50 p-2 flex border-l-8 border-gray-900">
+              <div className="flex-1 flex flex-col justify-between">
+                <div>
+                   {printOptions.showSku && <div className="text-[8px] font-black text-gray-400 mb-0.5">REF: {mockProduct.sku}</div>}
+                   {printOptions.showName && <div className="text-[10px] font-bold text-gray-900 leading-none">{mockProduct.name}</div>}
+                </div>
+                {printOptions.showPrice && <div className="text-sm font-black text-gray-900">${mockProduct.price}</div>}
+              </div>
+              <div className="w-12 h-full flex flex-col items-center justify-center border-l border-gray-200 pl-2">
+                {printFormat === 'qr' ? <QrCode className="w-8 h-8" /> : <Maximize2 className="w-8 h-8" />}
+              </div>
+            </div>
+          )}
+
+          {/* Template: Compact */}
+          {printTemplate === 'compact' && (
+            <div className="w-full h-full flex items-center gap-3 p-4">
+              {printFormat === 'qr' && <QrCode className="w-12 h-12 flex-shrink-0" />}
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                {printOptions.showName && <div className="text-[11px] font-black text-gray-900 truncate uppercase">{mockProduct.name}</div>}
+                {printOptions.showSku && <div className="text-[9px] font-bold text-gray-400">{mockProduct.sku}</div>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 max-w-lg mx-auto relative overflow-x-hidden transition-colors duration-300">
       {/* Dynamic Content */}
@@ -979,6 +1039,34 @@ const App: React.FC = () => {
             </div>
 
             <div className="space-y-6 mb-8">
+              {/* Live Preview Section */}
+              <LabelPreview />
+
+              {/* Designer Templates */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Design Template</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'modern', label: 'Modern', icon: Palette },
+                    { id: 'industrial', label: 'Industrial', icon: Layout },
+                    { id: 'compact', label: 'Compact', icon: Box }
+                  ].map((tpl) => (
+                    <button 
+                      key={tpl.id}
+                      onClick={() => setPrintTemplate(tpl.id as any)}
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all ${
+                        printTemplate === tpl.id 
+                          ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' 
+                          : 'border-gray-50 bg-gray-50 text-gray-400 dark:bg-gray-800 dark:border-gray-700'
+                      }`}
+                    >
+                      <tpl.icon className="w-4 h-4" />
+                      <span className="text-[10px] font-bold">{tpl.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Asset Selection */}
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Asset Scope</label>
@@ -1006,7 +1094,7 @@ const App: React.FC = () => {
 
               {/* Format Selection */}
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Label Format</label>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Code Format</label>
                 <div className="space-y-2">
                   {[
                     { id: 'qr', label: 'QR Code + Spec', icon: QrCode },
@@ -1041,7 +1129,7 @@ const App: React.FC = () => {
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <span className="flex-1 text-center font-black text-sm">{printCopies}</span>
+                    <span className="flex-1 text-center font-black text-sm dark:text-white">{printCopies}</span>
                     <button 
                       onClick={() => setPrintCopies(printCopies + 1)}
                       className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-500 shadow-sm"
@@ -1057,9 +1145,9 @@ const App: React.FC = () => {
                     onChange={(e) => setPrintSize(e.target.value as any)}
                     className="w-full p-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-50 dark:border-gray-700 rounded-2xl text-[10px] font-bold text-gray-500"
                   >
-                    <option value="sm">1" x 1"</option>
-                    <option value="md">2" x 1"</option>
-                    <option value="lg">4" x 2"</option>
+                    <option value="sm">1" x 1" (Small)</option>
+                    <option value="md">2" x 1" (Standard)</option>
+                    <option value="lg">4" x 2" (Large)</option>
                   </select>
                 </div>
               </div>

@@ -65,7 +65,12 @@ import {
   FileSpreadsheet,
   FileJson,
   FileText as FilePdfIcon,
-  Table
+  Table,
+  Bluetooth,
+  Printer,
+  Wifi,
+  Search,
+  Cpu
 } from 'lucide-react';
 import { db } from '../services/database';
 import { GoogleGenAI } from "@google/genai";
@@ -140,7 +145,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   privacyMode, 
   setPrivacyMode 
 }) => {
-  // Profile State - Updated defaults to match Sarah Wilson (Owner) from App.tsx
+  // Profile State
   const [userName, setUserName] = useState(() => localStorage.getItem('sv_user_name') || 'Sarah Wilson');
   const [userRole, setUserRole] = useState(() => localStorage.getItem('sv_user_role') || 'Owner');
   const [userLocation, setUserLocation] = useState(() => localStorage.getItem('sv_user_loc') || 'Headquarters');
@@ -183,6 +188,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [isModelPanelVisible, setIsModelPanelVisible] = useState(false);
   const [isExportSelectorVisible, setIsExportSelectorVisible] = useState(false);
   const [isImportSelectorVisible, setIsImportSelectorVisible] = useState(false);
+  const [isBluetoothPanelVisible, setIsBluetoothPanelVisible] = useState(false);
+  const [isPrintersPanelVisible, setIsPrintersPanelVisible] = useState(false);
   
   // New modal states for credentials
   const [isEmailChangeVisible, setIsEmailChangeVisible] = useState(false);
@@ -509,6 +516,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         <Row icon={Shield} title="Security & Privacy" subtitle="Two-factor, biometrics, sessions" onClick={() => setIsSecurityPanelVisible(true)} />
       </Section>
 
+      <Section title="Connectivity & Hardware">
+        <Row icon={Bluetooth} title="Bluetooth Devices" subtitle="Connect external scanners and HID" onClick={() => setIsBluetoothPanelVisible(true)} />
+        <Row icon={Printer} title="Label Printers" subtitle="Manage network and local printers" onClick={() => setIsPrintersPanelVisible(true)} />
+      </Section>
+
       <Section title="Preferences">
         <Row icon={Bell} title="Notifications" subtitle="Alert types and delivery" onClick={() => setIsNotificationsPanelVisible(true)} />
         <Row icon={Moon} title="Appearance" subtitle="Theme and layout" right={
@@ -542,6 +554,127 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         <Row icon={Activity} title="System Status" subtitle="All services operational" right={<div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full"><CheckCircle2 className="w-3 h-3" /><span className="text-[9px] font-bold uppercase tracking-wider">Live</span></div>} />
         <Row icon={Trash2} title="Factory Reset" subtitle="Wipe all products and cache" destructive onClick={onClearData} />
       </Section>
+
+      {/* --- CONNECTIVITY MODALS --- */}
+
+      {isBluetoothPanelVisible && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/10">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-600 text-white rounded-xl"><Bluetooth className="w-5 h-5" /></div>
+                <h2 className="text-xl font-bold dark:text-white">Bluetooth Peripherals</h2>
+              </div>
+              <button onClick={() => setIsBluetoothPanelVisible(false)} className="p-2 text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><X className="w-6 h-6" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="flex items-center justify-between p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse" />
+                  <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">Scanning for devices...</span>
+                </div>
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Paired Scanners</h3>
+                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white dark:bg-gray-700 rounded-xl shadow-sm"><Maximize2 className="w-5 h-5 text-indigo-500" /></div>
+                    <div>
+                      <h4 className="font-bold text-sm">KDC-200 Barcode Pro</h4>
+                      <p className="text-[10px] text-gray-500">Connected • 88% Battery</p>
+                    </div>
+                  </div>
+                  <button className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Disconnect</button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Available Nearby</h3>
+                {[
+                  { name: 'Zebra ZQ320 Printer', type: 'Printer' },
+                  { name: 'Symbol CS3000', type: 'Scanner' },
+                  { name: 'Warehouse Tablet #2', type: 'HID' }
+                ].map((dev, i) => (
+                  <button key={i} className="w-full p-4 bg-white dark:bg-gray-950 border dark:border-gray-800 rounded-2xl flex items-center justify-between hover:border-indigo-500 transition-colors group">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl text-gray-400 group-hover:text-indigo-500"><Search className="w-5 h-5" /></div>
+                      <div className="text-left">
+                        <h4 className="font-bold text-sm">{dev.name}</h4>
+                        <p className="text-[10px] text-gray-500">{dev.type}</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-widest">Pair Device</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="p-6 border-t dark:border-gray-800">
+              <button onClick={() => setIsBluetoothPanelVisible(false)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold hover:bg-gray-200 transition-all">Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPrintersPanelVisible && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between bg-amber-50 dark:bg-amber-900/10">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-600 text-white rounded-xl"><Printer className="w-5 h-5" /></div>
+                <h2 className="text-xl font-bold dark:text-white">Printer Management</h2>
+              </div>
+              <button onClick={() => setIsPrintersPanelVisible(false)} className="p-2 text-gray-400 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><X className="w-6 h-6" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="space-y-3">
+                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Network Printers</h3>
+                <div className="p-5 bg-indigo-600 text-white rounded-3xl shadow-lg relative overflow-hidden group">
+                  <div className="relative z-10 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Wifi className="w-4 h-4 text-indigo-200" />
+                        <h4 className="font-black">Warehouse Central (Zebra ZT)</h4>
+                      </div>
+                      <p className="text-xs text-indigo-100">IP: 192.168.1.144 • 4x2 Thermal</p>
+                    </div>
+                    <div className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-black uppercase tracking-widest">Default</div>
+                  </div>
+                  <div className="absolute top-0 right-0 p-8 opacity-10 -rotate-12 translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform">
+                    <Printer className="w-24 h-24" />
+                  </div>
+                </div>
+
+                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white dark:bg-gray-700 rounded-xl shadow-sm"><Monitor className="w-5 h-5 text-gray-400" /></div>
+                    <div>
+                      <h4 className="font-bold text-sm">HP OfficeJet Pro</h4>
+                      <p className="text-[10px] text-gray-500">Offline • Last used 2d ago</p>
+                    </div>
+                  </div>
+                  <button className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Connect</button>
+                </div>
+              </div>
+
+              <div className="p-5 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded-3xl">
+                <div className="flex items-center gap-3 mb-3">
+                  <Cpu className="w-5 h-5 text-amber-600" />
+                  <h4 className="font-bold text-amber-900 dark:text-amber-300">Printer Support</h4>
+                </div>
+                <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                  Connect via AirPrint, Cloud Print, or Bluetooth. We recommend industrial thermal printers for asset tags.
+                </p>
+              </div>
+            </div>
+            <div className="p-6 border-t dark:border-gray-800 flex flex-col gap-3">
+              <button className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-200 dark:shadow-none transition-all">Search for New Printer</button>
+              <button onClick={() => setIsPrintersPanelVisible(false)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- SYSTEM MODALS --- */}
 
@@ -678,7 +811,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         </div>
       )}
 
-      {/* --- REUSED PREVIOUS MODALS --- */}
+      {/* --- PERSONAL INFO MODAL --- */}
 
       {isPersonalInfoVisible && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
