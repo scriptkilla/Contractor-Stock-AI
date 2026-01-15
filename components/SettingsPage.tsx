@@ -70,7 +70,8 @@ import {
   Printer,
   Wifi,
   Search,
-  Cpu
+  Cpu,
+  Plus
 } from 'lucide-react';
 import { db } from '../services/database';
 import { GoogleGenAI } from "@google/genai";
@@ -84,6 +85,15 @@ interface SettingsPageProps {
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   privacyMode: boolean;
   setPrivacyMode: (v: boolean) => void;
+}
+
+interface NetworkPrinter {
+  id: string;
+  name: string;
+  ip: string;
+  type: string;
+  isDefault: boolean;
+  status: 'online' | 'offline';
 }
 
 const Section = ({ title, children }: { title: string; children?: React.ReactNode }) => (
@@ -194,6 +204,60 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // New modal states for credentials
   const [isEmailChangeVisible, setIsEmailChangeVisible] = useState(false);
   const [isPasswordChangeVisible, setIsPasswordChangeVisible] = useState(false);
+
+  // Printer Management Functionality
+  const [networkPrinters, setNetworkPrinters] = useState<NetworkPrinter[]>(() => {
+    const saved = localStorage.getItem('sv_saved_printers');
+    return saved ? JSON.parse(saved) : [
+      { id: 'p1', name: 'Warehouse Central (Zebra ZT)', ip: '192.168.1.144', type: '4x2 Thermal', isDefault: true, status: 'online' }
+    ];
+  });
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<NetworkPrinter[]>([]);
+  const [isSearchingPrinters, setIsSearchingPrinters] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('sv_saved_printers', JSON.stringify(networkPrinters));
+  }, [networkPrinters]);
+
+  const handleSearchPrinters = async () => {
+    setIsSearchingPrinters(true);
+    // Simulate a network search delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const mockFound: NetworkPrinter[] = [
+      { id: 'p2', name: 'Shipping Bay 4 (Brother)', ip: '192.168.1.201', type: '2x1 Label', isDefault: false, status: 'online' },
+      { id: 'p3', name: 'HP OfficeJet Pro 9010', ip: '192.168.1.105', type: 'Standard Paper', isDefault: false, status: 'online' },
+      { id: 'p4', name: 'Mobile Zebra QLn420', ip: '10.0.0.45', type: 'Mobile Thermal', isDefault: false, status: 'online' }
+    ];
+    // Filter out already saved ones
+    const newDiscovered = mockFound.filter(p => !networkPrinters.some(saved => saved.id === p.id));
+    setDiscoveredPrinters(newDiscovered);
+    setIsSearchingPrinters(false);
+  };
+
+  const handleAddPrinter = (printer: NetworkPrinter) => {
+    setNetworkPrinters(prev => [...prev, printer]);
+    setDiscoveredPrinters(prev => prev.filter(p => p.id !== printer.id));
+    addAuditLog(`Printer Added: ${printer.name}`, 'System', 'data');
+  };
+
+  const handleRemovePrinter = (id: string) => {
+    setNetworkPrinters(prev => {
+      const filtered = prev.filter(p => p.id !== id);
+      // If we removed the default, set a new one if possible
+      if (filtered.length > 0 && !filtered.some(p => p.isDefault)) {
+        filtered[0].isDefault = true;
+      }
+      return filtered;
+    });
+    addAuditLog(`Printer Removed`, 'System', 'data');
+  };
+
+  const handleSetDefaultPrinter = (id: string) => {
+    setNetworkPrinters(prev => prev.map(p => ({
+      ...p,
+      isDefault: p.id === id
+    })));
+  };
 
   // Edit Temp Profile
   const [tempProfile, setTempProfile] = useState({ 
@@ -630,33 +694,72 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="space-y-3">
                 <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Network Printers</h3>
-                <div className="p-5 bg-indigo-600 text-white rounded-3xl shadow-lg relative overflow-hidden group">
-                  <div className="relative z-10 flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Wifi className="w-4 h-4 text-indigo-200" />
-                        <h4 className="font-black">Warehouse Central (Zebra ZT)</h4>
+                <div className="space-y-3">
+                  {networkPrinters.length === 0 && !isSearchingPrinters && discoveredPrinters.length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-4 italic">No printers configured.</p>
+                  )}
+                  {networkPrinters.map(printer => (
+                    <div key={printer.id} className={`p-5 rounded-3xl shadow-lg relative overflow-hidden group transition-all ${printer.isDefault ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 dark:text-gray-100'}`}>
+                      <div className="relative z-10 flex items-center justify-between">
+                        <div onClick={() => handleSetDefaultPrinter(printer.id)} className="cursor-pointer flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Wifi className={`w-4 h-4 ${printer.isDefault ? 'text-indigo-200' : 'text-gray-400'}`} />
+                            <h4 className="font-black">{printer.name}</h4>
+                          </div>
+                          <p className={`text-xs ${printer.isDefault ? 'text-indigo-100' : 'text-gray-500'}`}>IP: {printer.ip} • {printer.type}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {printer.isDefault && <div className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-black uppercase tracking-widest">Default</div>}
+                          <button 
+                            onClick={() => handleRemovePrinter(printer.id)}
+                            className={`p-2 rounded-xl transition-colors ${printer.isDefault ? 'hover:bg-white/10 text-white' : 'hover:bg-red-50 text-red-500'}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-xs text-indigo-100">IP: 192.168.1.144 • 4x2 Thermal</p>
+                      <div className={`absolute top-0 right-0 p-8 opacity-10 -rotate-12 translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform ${printer.isDefault ? 'text-white' : 'text-gray-300'}`}>
+                        <Printer className="w-24 h-24" />
+                      </div>
                     </div>
-                    <div className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-black uppercase tracking-widest">Default</div>
-                  </div>
-                  <div className="absolute top-0 right-0 p-8 opacity-10 -rotate-12 translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform">
-                    <Printer className="w-24 h-24" />
-                  </div>
-                </div>
-
-                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-2xl flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-white dark:bg-gray-700 rounded-xl shadow-sm"><Monitor className="w-5 h-5 text-gray-400" /></div>
-                    <div>
-                      <h4 className="font-bold text-sm">HP OfficeJet Pro</h4>
-                      <p className="text-[10px] text-gray-500">Offline • Last used 2d ago</p>
-                    </div>
-                  </div>
-                  <button className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Connect</button>
+                  ))}
                 </div>
               </div>
+
+              {/* Discovery Section */}
+              {(isSearchingPrinters || discoveredPrinters.length > 0) && (
+                <div className="space-y-3 animate-in fade-in duration-500">
+                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Discovered Devices</h3>
+                  <div className="space-y-3">
+                    {isSearchingPrinters && (
+                      <div className="flex items-center justify-center gap-3 p-8 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
+                        <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+                        <span className="text-sm font-bold text-gray-500">Broadcasting for AirPrint...</span>
+                      </div>
+                    )}
+                    {discoveredPrinters.map(printer => (
+                      <div key={printer.id} className="p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl flex items-center justify-between group hover:border-indigo-500 transition-all">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl text-indigo-600">
+                            <Wifi className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-sm dark:text-gray-100">{printer.name}</h4>
+                            <p className="text-[10px] text-gray-500">{printer.ip} • {printer.type}</p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => handleAddPrinter(printer)}
+                          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-100 dark:shadow-none hover:bg-indigo-700"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Connect
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="p-5 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded-3xl">
                 <div className="flex items-center gap-3 mb-3">
@@ -664,367 +767,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   <h4 className="font-bold text-amber-900 dark:text-amber-300">Printer Support</h4>
                 </div>
                 <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                  Connect via AirPrint, Cloud Print, or Bluetooth. We recommend industrial thermal printers for asset tags.
+                  Connect via AirPrint, Cloud Print, or Bluetooth. We recommend industrial thermal printers for asset tags. Ensure your printer is on the same WiFi network.
                 </p>
               </div>
             </div>
             <div className="p-6 border-t dark:border-gray-800 flex flex-col gap-3">
-              <button className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-200 dark:shadow-none transition-all">Search for New Printer</button>
-              <button onClick={() => setIsPrintersPanelVisible(false)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- SYSTEM MODALS --- */}
-
-      {/* Export Selector Modal */}
-      {isExportSelectorVisible && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 flex flex-col">
-            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between">
-              <h2 className="text-xl font-bold dark:text-white">Choose Export Format</h2>
-              <button onClick={() => setIsExportSelectorVisible(false)} className="p-2 text-gray-400 rounded-xl"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="p-6 grid grid-cols-2 gap-4">
-              <button onClick={() => handleExport('json')} className="flex flex-col items-center gap-3 p-6 bg-gray-50 dark:bg-gray-800 rounded-2xl border hover:border-indigo-500 transition-all group">
-                <FileJson className="w-8 h-8 text-amber-500 group-hover:scale-110 transition-transform" />
-                <span className="font-bold text-sm">JSON Backup</span>
-                <span className="text-[10px] text-gray-400 text-center">Best for full system restore</span>
-              </button>
-              <button onClick={() => handleExport('csv')} className="flex flex-col items-center gap-3 p-6 bg-gray-50 dark:bg-gray-800 rounded-2xl border hover:border-indigo-500 transition-all group">
-                <Table className="w-8 h-8 text-emerald-500 group-hover:scale-110 transition-transform" />
-                <span className="font-bold text-sm">CSV Table</span>
-                <span className="text-[10px] text-gray-400 text-center">Compatible with most apps</span>
-              </button>
-              <button onClick={() => handleExport('xlsx')} className="flex flex-col items-center gap-3 p-6 bg-gray-50 dark:bg-gray-800 rounded-2xl border hover:border-indigo-500 transition-all group">
-                <FileSpreadsheet className="w-8 h-8 text-blue-500 group-hover:scale-110 transition-transform" />
-                <span className="font-bold text-sm">Excel Sheet</span>
-                <span className="text-[10px] text-gray-400 text-center">Formatted spreadsheet</span>
-              </button>
-              <button onClick={() => handleExport('pdf')} className="flex flex-col items-center gap-3 p-6 bg-gray-50 dark:bg-gray-800 rounded-2xl border hover:border-indigo-500 transition-all group">
-                <FilePdfIcon className="w-8 h-8 text-red-500 group-hover:scale-110 transition-transform" />
-                <span className="font-bold text-sm">PDF Report</span>
-                <span className="text-[10px] text-gray-400 text-center">Print-ready summary</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Import Selector Modal */}
-      {isImportSelectorVisible && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 flex flex-col">
-            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between">
-              <h2 className="text-xl font-bold dark:text-white">Import Inventory</h2>
-              <button onClick={() => setIsImportSelectorVisible(false)} className="p-2 text-gray-400 rounded-xl"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="p-6 text-center space-y-4">
-              <div className="p-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl bg-gray-50 dark:bg-gray-950 flex flex-col items-center gap-4">
-                <Upload className="w-12 h-12 text-gray-300" />
-                <div>
-                  <p className="font-bold dark:text-gray-100">Click to upload file</p>
-                  <p className="text-xs text-gray-500 mt-1">Supports JSON, CSV, and Excel (.xlsx)</p>
-                </div>
-                <button 
-                  onClick={() => fileInputRef.current?.click()} 
-                  className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-100 dark:shadow-none"
-                >
-                  Select File
-                </button>
-              </div>
-              <p className="text-[10px] text-gray-400 px-4">Importing will merge new items with your existing database. Items with matching SKUs will be updated.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- PREFERENCES MODALS --- */}
-
-      {isNotificationsPanelVisible && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between">
-              <h2 className="text-xl font-bold dark:text-white">Notifications</h2>
-              <button onClick={() => setIsNotificationsPanelVisible(false)} className="p-2 text-gray-400 rounded-xl"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="p-4 space-y-2">
-              <Row icon={Package} title="Low Stock Alerts" subtitle="Get notified when items drop below 5 units" right={<Toggle enabled={notifLowStock} setEnabled={setNotifLowStock} />} />
-              <Row icon={Users} title="Team Activity" subtitle="Updates on product additions and changes" right={<Toggle enabled={notifTeam} setEnabled={setNotifTeam} />} />
-              <Row icon={ShieldAlert} title="Security Alerts" subtitle="Unrecognized logins and access revocations" right={<Toggle enabled={notifSecurity} setEnabled={setNotifSecurity} />} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isRegionalPanelVisible && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between">
-              <h2 className="text-xl font-bold dark:text-white">Regional Settings</h2>
-              <button onClick={() => setIsRegionalPanelVisible(false)} className="p-2 text-gray-400 rounded-xl"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="p-6 space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Language</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {['English (US)', 'Spanish', 'French', 'German'].map(lang => (
-                    <button key={lang} onClick={() => setLanguage(lang)} className={`p-4 rounded-2xl border-2 text-sm font-bold transition-all ${language === lang ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : 'border-gray-50 dark:border-gray-800 dark:text-gray-300'}`}>{lang}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Currency</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {['USD ($)', 'EUR (€)', 'GBP (£)'].map(cur => (
-                    <button key={cur} onClick={() => setCurrency(cur)} className={`p-3 rounded-2xl border-2 text-[10px] font-bold transition-all ${currency === cur ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : 'border-gray-50 dark:border-gray-800 dark:text-gray-300'}`}>{cur}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Unit System</label>
-                <div className="flex gap-2">
-                  {['Metric (kg/cm)', 'Imperial (lb/in)'].map(sys => (
-                    <button key={sys} onClick={() => setUnits(sys)} className={`flex-1 p-4 rounded-2xl border-2 text-sm font-bold transition-all ${units === sys ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : 'border-gray-50 dark:border-gray-800 dark:text-gray-300'}`}>{sys}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isScannerPanelVisible && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between">
-              <h2 className="text-xl font-bold dark:text-white">Scanner Configuration</h2>
-              <button onClick={() => setIsScannerPanelVisible(false)} className="p-2 text-gray-400 rounded-xl"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="p-4 space-y-2">
-              <Row icon={Volume2} title="Audio Feedback" subtitle="Beep on successful scan" right={<Toggle enabled={scanBeep} setEnabled={setScanBeep} />} />
-              <Row icon={Vibrate} title="Haptic Feedback" subtitle="Vibrate on successful scan" right={<Toggle enabled={scanVibrate} setEnabled={setScanVibrate} />} />
-              <Row icon={RefreshCw} title="Continuous Mode" subtitle="Don't close scanner after a match" right={<Toggle enabled={scanContinuous} setEnabled={setScanContinuous} />} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- PERSONAL INFO MODAL --- */}
-
-      {isPersonalInfoVisible && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between">
-              <button onClick={() => setIsPersonalInfoVisible(false)} className="p-2 text-gray-400 hover:bg-gray-50 rounded-xl"><X className="w-6 h-6" /></button>
-              <h2 className="text-xl font-bold dark:text-white">Personal Info</h2>
-              <button onClick={saveProfile} className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm">Save</button>
-            </div>
-            <div className="p-6 space-y-6 overflow-y-auto">
-              <div className="flex flex-col items-center">
-                <div className="relative group">
-                  <div className="w-24 h-24 bg-indigo-500 rounded-3xl flex items-center justify-center text-white text-3xl font-bold uppercase overflow-hidden shadow-lg border-4 border-white dark:border-gray-800">
-                    {tempProfile.image ? <img src={tempProfile.image} className="w-full h-full object-cover" /> : tempProfile.name.substring(0, 2) || 'JD'}
-                  </div>
-                  <button onClick={() => profilePhotoInputRef.current?.click()} className="absolute -bottom-2 -right-2 p-2 bg-white dark:bg-gray-800 rounded-full shadow-md border border-gray-100 dark:border-gray-700 text-indigo-600 hover:scale-110 transition-transform"><Camera className="w-4 h-4" /></button>
-                  <input type="file" ref={profilePhotoInputRef} className="hidden" accept="image/*" onChange={handleProfilePhotoChange} />
-                </div>
-              </div>
-              <div className="space-y-4">
-                {[
-                  { label: 'Full Name', val: 'name', icon: User },
-                  { label: 'Employee ID', val: 'employeeId', icon: Hash },
-                  { label: 'Department', val: 'role', icon: Briefcase },
-                  { label: 'Work Email', val: 'email', icon: Mail },
-                  { label: 'Phone', val: 'phone', icon: Phone },
-                  { label: 'Site', val: 'location', icon: MapPin }
-                ].map(field => (
-                  <div key={field.val} className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">{field.label}</label>
-                    <div className="relative">
-                      <field.icon className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input type="text" value={(tempProfile as any)[field.val]} onChange={e => setTempProfile({...tempProfile, [field.val]: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-800 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isSecurityPanelVisible && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between">
-              <h2 className="text-xl font-bold dark:text-white">Security & Privacy</h2>
-              <button onClick={() => setIsSecurityPanelVisible(false)} className="p-2 text-gray-400 rounded-xl transition-colors"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <div className="p-6">
-                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-3xl p-5 border border-gray-100 dark:border-gray-800">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Account Health</span>
-                    <span className={`text-xs font-bold uppercase ${healthColor}`}>{healthLabel}</span>
-                  </div>
-                  <div className="flex gap-1.5 h-1.5 mb-4">
-                    {[1,2,3].map(i => <div key={i} className={`flex-1 rounded-full transition-colors ${securityScore >= i ? (i===1 ? 'bg-red-500' : i===2 ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-gray-200 dark:bg-gray-700'}`} />)}
-                  </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{securityScore === 3 ? "Fully protected. Great job!" : "Enhance security layers."}</p>
-                </div>
-              </div>
-              <div className="px-2">
-                <h3 className="px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Access Control</h3>
-                <Row icon={Key} title="Two-Factor Auth" subtitle="SMS or App" right={<Toggle enabled={twoFactor} setEnabled={setTwoFactor} />} />
-                <Row icon={Fingerprint} title="Biometric Lock" subtitle="FaceID / TouchID" right={<Toggle enabled={biometrics} setEnabled={setBiometrics} />} />
-                <Row icon={Lock} title="Quick App Lock" subtitle="Lock on launch" right={<Toggle enabled={appLock} setEnabled={setAppLock} />} />
-                
-                <div className="mt-6 mb-2"><h3 className="px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Credentials</h3></div>
-                <Row icon={Mail} title="Change Email" subtitle={userEmail} onClick={() => setIsEmailChangeVisible(true)} />
-                <Row icon={Lock} title="Update Password" subtitle="Last changed 3 months ago" onClick={() => setIsPasswordChangeVisible(true)} />
-                
-                <div className="mt-6 mb-2"><h3 className="px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Privacy Controls</h3></div>
-                <Row icon={privacyMode ? EyeOff : Eye} title="Privacy Screen" subtitle="Mask values in lists" right={<Toggle enabled={privacyMode} setEnabled={setPrivacyMode} />} />
-              </div>
-              <div className="px-6 py-6 border-t dark:border-gray-800 mt-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Device Sessions</h3>
-                  <button onClick={logoutAll} disabled={revokingId === 'ALL' || sessions.length <= 1} className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Logout All</button>
-                </div>
-                <div className="space-y-4">
-                  {sessions.map((session) => (
-                    <div key={session.id} className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${session.current ? 'border-indigo-100 bg-indigo-50/20 dark:border-indigo-900/30' : 'border-gray-50 bg-gray-50/50'}`}>
-                      <div className="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm">{session.type === 'mobile' ? <PhoneIcon className="w-5 h-5 text-gray-400" /> : session.type === 'tablet' ? <Tablet className="w-5 h-5 text-gray-400" /> : <Monitor className="w-5 h-5 text-gray-400" />}</div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2"><h4 className="font-bold text-sm">{session.device}</h4>{session.current && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[8px] font-bold rounded-full uppercase">Current</span>}</div>
-                        <p className="text-[10px] text-gray-500">{session.location} • {session.time}</p>
-                      </div>
-                      {!session.current && (
-                        <button onClick={() => revokeSession(session)} disabled={revokingId === session.id} className="p-2 text-red-500 disabled:opacity-50">
-                          {revokingId === session.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash className="w-4 h-4" />}
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="p-6 border-t dark:border-gray-800 flex flex-col gap-3">
-              <button onClick={() => setIsAuditLogsVisible(true)} className="w-full py-4 bg-indigo-50 text-indigo-600 rounded-2xl font-bold text-sm flex items-center justify-center gap-2"><History className="w-4 h-4" />View Audit Logs</button>
-              <button onClick={() => setIsDeactivateConfirmVisible(true)} className="w-full py-4 text-red-600 font-bold text-sm">Deactivate Account</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Change Email Modal */}
-      {isEmailChangeVisible && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[2.5rem] overflow-hidden shadow-2xl p-8 border border-gray-100 dark:border-gray-800 animate-in zoom-in-95">
-            <h3 className="text-2xl font-black mb-1">Update Email</h3>
-            <p className="text-xs text-gray-500 mb-6 font-medium">Provide your new official work email.</p>
-            <div className="space-y-4 mb-8">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Current Email</label>
-                <input type="text" disabled value={userEmail} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border-none text-gray-400 text-sm" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">New Email</label>
-                <input type="email" placeholder="new.email@company.com" className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-3">
-              <button onClick={() => { setIsEmailChangeVisible(false); alert("Verification email sent to new address."); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition-all">Update Address</button>
-              <button onClick={() => setIsEmailChangeVisible(false)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Change Password Modal */}
-      {isPasswordChangeVisible && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[2.5rem] overflow-hidden shadow-2xl p-8 border border-gray-100 dark:border-gray-800 animate-in zoom-in-95">
-            <h3 className="text-2xl font-black mb-1">Update Security</h3>
-            <p className="text-xs text-gray-500 mb-6 font-medium">Use at least 8 characters with a mix of types.</p>
-            <div className="space-y-4 mb-8">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Current Password</label>
-                <input type="password" placeholder="••••••••" className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">New Password</label>
-                <input type="password" placeholder="••••••••" className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Confirm New Password</label>
-                <input type="password" placeholder="••••••••" className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-sm" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-3">
-              <button onClick={() => { setIsPasswordChangeVisible(false); alert("Password updated successfully."); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition-all">Save New Password</button>
-              <button onClick={() => setIsPasswordChangeVisible(false)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isAuditLogsVisible && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[70vh]">
-            <div className="p-6 border-b dark:border-gray-800 flex items-center justify-between">
-              <h3 className="text-xl font-bold dark:text-white">Security Logs</h3>
-              <button onClick={() => setIsAuditLogsVisible(false)} className="p-2 text-gray-400"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {auditLogs.map(log => (
-                <div key={log.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${log.type === 'alert' ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600'}`}>{log.action}</span>
-                    <span className="text-[10px] text-gray-400">{log.date}</span>
-                  </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">Target: {log.device}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Session Revocation Confirmation Modal */}
-      {sessionToRevoke && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[70] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 text-center">
-            <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <ShieldAlert className="w-10 h-10 text-red-600 dark:text-red-500" />
-            </div>
-            <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2">
-              {sessionToRevoke === 'ALL' ? 'Logout All?' : 'Revoke Session?'}
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
-              {sessionToRevoke === 'ALL' 
-                ? 'Are you sure you want to end all other active device sessions? You will need to sign back in on those devices.'
-                : `Are you sure you want to revoke the session for ${sessionToRevoke.device}? The device will be signed out immediately.`
-              }
-            </p>
-            <div className="flex flex-col gap-3">
               <button 
-                onClick={confirmRevoke}
-                className="w-full py-4 bg-red-600 text-white rounded-2xl font-bold shadow-xl shadow-red-200 dark:shadow-none hover:bg-red-700 active:scale-[0.98] transition-all"
+                onClick={handleSearchPrinters}
+                disabled={isSearchingPrinters}
+                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-200 dark:shadow-none transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {sessionToRevoke === 'ALL' ? 'Confirm Logout All' : 'Confirm Revocation'}
+                {isSearchingPrinters ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                {isSearchingPrinters ? 'Searching Network...' : 'Search for New Printer'}
               </button>
-              <button 
-                onClick={() => setSessionToRevoke(null)}
-                className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-[0.98] transition-all"
-              >
-                Cancel
-              </button>
+              <button onClick={() => setIsPrintersPanelVisible(false)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold hover:bg-gray-200 transition-all">Close</button>
             </div>
           </div>
         </div>
       )}
+
+      {/* --- SUPPORT MODALS --- */}
 
       {isHelpVisible && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300 p-4">

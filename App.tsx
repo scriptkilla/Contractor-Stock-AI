@@ -46,7 +46,10 @@ import {
   Eye,
   Type,
   Palette,
-  Layout
+  Layout,
+  Calendar,
+  ShieldAlert as ShieldIcon,
+  Droplets
 } from 'lucide-react';
 
 interface TeamMember {
@@ -109,7 +112,10 @@ const App: React.FC = () => {
     showName: true,
     showPrice: false,
     showSku: true,
-    highContrast: true
+    showDate: false,
+    highContrast: true,
+    labelColor: 'bg-white',
+    securityMark: false
   });
 
   const memberPhotoInputRef = useRef<HTMLInputElement>(null);
@@ -286,7 +292,7 @@ const App: React.FC = () => {
             setEditingProduct(undefined);
             setCurrentView(View.ADD_PRODUCT);
           }}
-          className="flex items-center gap-4 p-5 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-indigo-300 transition-all group"
+          className="flex items-center gap-4 p-5 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-emerald-300 transition-all group"
         >
           <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl group-hover:bg-emerald-100 transition-colors">
             <Plus className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
@@ -353,7 +359,19 @@ const App: React.FC = () => {
   const renderInventory = () => (
     <div className="space-y-4 pb-24 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex flex-col gap-4 mb-4">
-        <h1 className="text-2xl font-black dark:text-white tracking-tight">Current Inventory</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-black dark:text-white tracking-tight">Current Inventory</h1>
+          <button 
+            onClick={() => {
+              setEditingProduct(undefined);
+              setCurrentView(View.ADD_PRODUCT);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 dark:shadow-none active:scale-95 transition-all"
+          >
+            <PlusIcon className="w-4 h-4" />
+            Add Asset
+          </button>
+        </div>
         <div className="relative group">
           <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
           <input 
@@ -417,17 +435,6 @@ const App: React.FC = () => {
             <p className="text-gray-500 dark:text-gray-400 font-bold px-6">
               {inventorySearch ? `No matches found for "${inventorySearch}"` : 'Your inventory is currently empty'}
             </p>
-            {!inventorySearch && (
-              <button 
-                onClick={() => {
-                  setEditingProduct(undefined);
-                  setCurrentView(View.ADD_PRODUCT);
-                }}
-                className="mt-6 px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 active:scale-95 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
-              >
-                Add Your First Asset
-              </button>
-            )}
           </div>
         )}
       </div>
@@ -544,6 +551,160 @@ const App: React.FC = () => {
           </button>
         </div>
       </div>
+    </div>
+  );
+
+  /* Added missing LabelPreview component for live preview of label templates */
+  const LabelPreview = () => {
+    const previewProduct = products[0] || {
+      name: 'Industrial Valve 400 Series',
+      sku: 'SKU-9921-X',
+      price: 1240.50,
+      lastUpdated: new Date().toISOString()
+    };
+
+    const labelSizeClasses = {
+      sm: 'w-32 h-32',
+      md: 'w-64 h-32',
+      lg: 'w-full h-40'
+    }[printSize];
+
+    return (
+      <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700 flex flex-col items-center gap-4">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Live Template Preview</span>
+        </div>
+        
+        <div className={`${labelSizeClasses} ${printOptions.labelColor} rounded-xl shadow-2xl border border-gray-100 dark:border-gray-800 p-6 flex items-center gap-6 relative overflow-hidden transition-all duration-500`}>
+          {printOptions.securityMark && (
+            <div className="absolute -top-4 -right-4 w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center opacity-20 rotate-12">
+              <ShieldIcon className="w-6 h-6 text-gray-400" />
+            </div>
+          )}
+          
+          <div className="flex-1 min-w-0 flex flex-col justify-between h-full">
+            <div>
+              {printOptions.showName && (
+                <h4 className="text-sm font-black text-gray-900 truncate uppercase tracking-tight">{previewProduct.name}</h4>
+              )}
+              {printOptions.showSku && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Hash className="w-3 h-3 text-gray-400" />
+                  <p className="text-[9px] font-mono text-gray-500 font-bold">{previewProduct.sku}</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="space-y-1">
+              {printOptions.showPrice && (
+                <div className="text-lg font-black text-indigo-600">${previewProduct.price.toLocaleString()}</div>
+              )}
+              {printOptions.showDate && (
+                <div className="text-[8px] text-gray-400 font-bold uppercase tracking-wider">
+                  {new Date(previewProduct.lastUpdated).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="shrink-0 flex flex-col items-center justify-center gap-2">
+            {printFormat === 'qr' ? (
+              <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-50">
+                <QrCode className="w-16 h-16 text-gray-900" />
+              </div>
+            ) : printFormat === 'barcode' ? (
+              <div className="p-3 bg-white rounded-lg shadow-sm border border-gray-50 flex items-end gap-[2px] h-20">
+                {[3, 1, 2, 4, 1, 3, 2, 1, 4, 2, 1, 3].map((w, i) => (
+                  <div key={i} className="bg-gray-900" style={{ width: `${w}px`, height: '100%' }} />
+                ))}
+              </div>
+            ) : (
+              <div className="w-20 h-20 bg-gray-900 rounded-lg flex flex-col items-center justify-center text-white p-2">
+                <Hash className="w-6 h-6 mb-1 opacity-50" />
+                <span className="text-[10px] font-black tracking-tighter truncate w-full text-center">
+                  {previewProduct.sku.split('-')[0]}
+                </span>
+              </div>
+            )}
+            <span className="text-[8px] font-bold text-gray-300 uppercase tracking-widest">{printFormat}</span>
+          </div>
+          
+          {printTemplate === 'industrial' && (
+            <div className="absolute inset-x-0 bottom-0 h-1.5 bg-gray-900/10" />
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-gray-100 transition-colors duration-300">
+      <div className="max-w-lg mx-auto p-4 pt-8">
+        {isScanning ? (
+          <Scanner 
+            onScan={handleScan} 
+            onClose={() => setIsScanning(false)} 
+          />
+        ) : currentView === View.ADD_PRODUCT || editingProduct || scannedResult ? (
+          <div className="animate-in fade-in zoom-in duration-500">
+            <ProductForm 
+              initialSku={scannedResult?.sku || editingProduct?.sku}
+              initialProduct={scannedResult?.product || editingProduct}
+              onSave={handleSaveProduct}
+              onCancel={() => {
+                setScannedResult(null);
+                setEditingProduct(undefined);
+                setCurrentView(View.DASHBOARD);
+              }}
+            />
+          </div>
+        ) : currentView === View.SETTINGS ? (
+          <SettingsPage 
+            onClearData={handleClearDatabase} 
+            productCount={products.length}
+            theme={theme}
+            setTheme={setTheme}
+            privacyMode={privacyMode}
+            setPrivacyMode={setPrivacyMode}
+          />
+        ) : currentView === View.TEAMS ? (
+          renderTeams()
+        ) : currentView === View.INVENTORY ? (
+          renderInventory()
+        ) : (
+          renderDashboard()
+        )}
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {productToDelete && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-gray-900 w-full max-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 text-center">
+            <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle className="w-10 h-10 text-red-600 dark:text-red-500" />
+            </div>
+            <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2">Delete Asset?</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
+              Are you sure you want to remove <span className="font-bold text-gray-900 dark:text-gray-200">{productToDelete.name}</span>? This action is permanent and cannot be reversed.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={confirmDelete}
+                className="w-full py-4 bg-red-600 text-white rounded-2xl font-bold shadow-xl shadow-red-200 dark:shadow-none hover:bg-red-700 active:scale-[0.98] transition-all"
+              >
+                Permanently Delete
+              </button>
+              <button 
+                onClick={() => setProductToDelete(null)}
+                className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-[0.98] transition-all"
+              >
+                Keep Asset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pending Invites Queue Modal */}
       {isPendingInvitesModalOpen && (
@@ -825,209 +986,11 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
-  );
-
-  const LabelPreview = () => {
-    const mockProduct = products[0] || { sku: 'SKU-88219-X', name: 'Premium Copper Fitting', price: 12.99 };
-    
-    return (
-      <div className="space-y-3">
-        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Live Design Preview</label>
-        <div className={`
-          relative bg-white border shadow-inner rounded-xl flex flex-col items-center justify-center overflow-hidden
-          ${printSize === 'sm' ? 'w-32 h-32' : printSize === 'md' ? 'w-48 h-24' : 'w-64 h-32'}
-          ${printOptions.highContrast ? 'border-black' : 'border-gray-200'}
-          mx-auto transition-all duration-500
-        `}>
-          {/* Template: Modern */}
-          {printTemplate === 'modern' && (
-            <div className="w-full h-full p-3 flex flex-col items-center justify-between text-center">
-              {printOptions.showName && <h4 className="text-[10px] font-black uppercase text-gray-900 line-clamp-1">{mockProduct.name}</h4>}
-              {printFormat === 'qr' && <QrCode className="w-10 h-10 text-gray-900 my-1" />}
-              {printFormat === 'barcode' && <div className="w-full h-8 bg-black/5 flex items-center justify-center text-[8px] font-mono text-gray-400">||||||||||||||||||||</div>}
-              {printFormat === 'tag' && <div className="w-10 h-10 border-4 border-gray-900 rounded-full flex items-center justify-center font-black text-xs">C.S.</div>}
-              <div className="flex justify-between items-end w-full">
-                {printOptions.showSku && <span className="text-[8px] font-bold text-gray-500">{mockProduct.sku}</span>}
-                {printOptions.showPrice && <span className="text-[10px] font-black text-indigo-600">${mockProduct.price}</span>}
-              </div>
-            </div>
-          )}
-
-          {/* Template: Industrial */}
-          {printTemplate === 'industrial' && (
-            <div className="w-full h-full bg-gray-50 p-2 flex border-l-8 border-gray-900">
-              <div className="flex-1 flex flex-col justify-between">
-                <div>
-                   {printOptions.showSku && <div className="text-[8px] font-black text-gray-400 mb-0.5">REF: {mockProduct.sku}</div>}
-                   {printOptions.showName && <div className="text-[10px] font-bold text-gray-900 leading-none">{mockProduct.name}</div>}
-                </div>
-                {printOptions.showPrice && <div className="text-sm font-black text-gray-900">${mockProduct.price}</div>}
-              </div>
-              <div className="w-12 h-full flex flex-col items-center justify-center border-l border-gray-200 pl-2">
-                {printFormat === 'qr' ? <QrCode className="w-8 h-8" /> : <Maximize2 className="w-8 h-8" />}
-              </div>
-            </div>
-          )}
-
-          {/* Template: Compact */}
-          {printTemplate === 'compact' && (
-            <div className="w-full h-full flex items-center gap-3 p-4">
-              {printFormat === 'qr' && <QrCode className="w-12 h-12 flex-shrink-0" />}
-              <div className="flex-1 min-w-0 flex flex-col justify-center">
-                {printOptions.showName && <div className="text-[11px] font-black text-gray-900 truncate uppercase">{mockProduct.name}</div>}
-                {printOptions.showSku && <div className="text-[9px] font-bold text-gray-400">{mockProduct.sku}</div>}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 max-w-lg mx-auto relative overflow-x-hidden transition-colors duration-300">
-      {/* Dynamic Content */}
-      <main className="p-4 pt-6">
-        {currentView === View.DASHBOARD && renderDashboard()}
-        {currentView === View.INVENTORY && renderInventory()}
-        {currentView === View.TEAMS && renderTeams()}
-        {currentView === View.SETTINGS && (
-          <SettingsPage 
-            onClearData={handleClearDatabase} 
-            productCount={products.length}
-            theme={theme}
-            setTheme={setTheme}
-            privacyMode={privacyMode}
-            setPrivacyMode={setPrivacyMode}
-          />
-        )}
-        {currentView === View.ADD_PRODUCT && (
-          <ProductForm 
-            onSave={handleSaveProduct} 
-            onCancel={() => {
-              setCurrentView(View.DASHBOARD);
-              setEditingProduct(undefined);
-            }} 
-            initialProduct={editingProduct}
-            initialSku={scannedResult?.sku}
-          />
-        )}
-      </main>
-
-      {/* Barcode Scanner Modal */}
-      {isScanning && (
-        <Scanner 
-          onScan={handleScan} 
-          onClose={() => setIsScanning(false)} 
-        />
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {productToDelete && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 text-center">
-            <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <AlertTriangle className="w-10 h-10 text-red-600 dark:text-red-500" />
-            </div>
-            <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2">Delete Item?</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
-              Are you sure you want to remove <span className="font-bold text-gray-900 dark:text-gray-200">{productToDelete.name}</span>? This action is permanent.
-            </p>
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={confirmDelete}
-                className="w-full py-4 bg-red-600 text-white rounded-2xl font-bold shadow-xl shadow-red-200 dark:shadow-none hover:bg-red-700 active:scale-[0.98] transition-all"
-              >
-                Delete Asset
-              </button>
-              <button 
-                onClick={() => setProductToDelete(null)}
-                className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-[0.98] transition-all"
-              >
-                Keep Item
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Result Panel Overlay */}
-      {scannedResult && (
-        <div className="fixed inset-0 bg-black/40 z-40 flex items-end animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full rounded-t-3xl p-6 pb-12 shadow-2xl animate-in slide-in-from-bottom duration-300">
-            <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6" />
-            
-            <div className="flex items-center justify-center gap-3 mb-6">
-              {scannedResult.product ? (
-                <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-4 py-2 rounded-full font-bold">
-                  <CheckCircle2 className="w-5 h-5" />
-                  Product Recognized
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-4 py-2 rounded-full font-bold">
-                  <AlertCircle className="w-5 h-5" />
-                  New Product Detected
-                </div>
-              )}
-            </div>
-
-            <div className="text-center mb-8">
-              <span className="text-xs font-bold text-gray-400 dark:text-gray-500 tracking-widest uppercase mb-1 block">Barcode ID</span>
-              <h2 className="text-3xl font-mono font-bold text-gray-800 dark:text-gray-100 break-all">{scannedResult.sku}</h2>
-              {scannedResult.product && (
-                <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center gap-4 text-left">
-                  <div className="w-12 h-12 bg-white dark:bg-gray-700 rounded-lg flex items-center justify-center shadow-sm overflow-hidden border border-gray-100 dark:border-gray-600">
-                    {scannedResult.product.imageUrl ? (
-                      <img src={scannedResult.product.imageUrl} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="text-indigo-600 dark:text-indigo-400" />
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-gray-800 dark:text-gray-100">{scannedResult.product.name}</h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Currently {scannedResult.product.quantity} units available</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <button 
-                onClick={() => setScannedResult(null)}
-                className="px-4 py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              >
-                Cancel
-              </button>
-              {scannedResult.product ? (
-                <button 
-                  onClick={() => handleEditClick(scannedResult.product!)}
-                  className="px-4 py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  Edit Product
-                </button>
-              ) : (
-                <button 
-                  onClick={() => {
-                    setScannedResult(null);
-                    setEditingProduct(undefined);
-                    setCurrentView(View.ADD_PRODUCT);
-                  }}
-                  className="px-4 py-4 bg-emerald-600 text-white rounded-2xl font-bold shadow-lg shadow-emerald-100 dark:shadow-none hover:bg-emerald-700 transition-colors"
-                >
-                  Add Product
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Print Labels Modal */}
       {isPrintModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6 animate-in fade-in duration-300 overflow-y-auto">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 my-8">
+          <div className="bg-white dark:bg-gray-900 w-full max-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 my-8">
             <div className="flex items-center gap-3 mb-8">
               <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center">
                 <Printer className="w-6 h-6 text-amber-600 dark:text-amber-400" />
@@ -1042,26 +1005,60 @@ const App: React.FC = () => {
               {/* Live Preview Section */}
               <LabelPreview />
 
-              {/* Designer Templates */}
+              {/* Design Settings Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Design Template</label>
+                  <select 
+                    value={printTemplate}
+                    onChange={(e) => setPrintTemplate(e.target.value as any)}
+                    className="w-full p-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-50 dark:border-gray-700 rounded-2xl text-[10px] font-bold text-gray-500 outline-none focus:border-indigo-500 transition-colors"
+                  >
+                    <option value="modern">Modern Professional</option>
+                    <option value="industrial">Heavy Duty Industrial</option>
+                    <option value="compact">Space Saving</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Label Background</label>
+                  <div className="flex items-center gap-2 p-1.5 bg-gray-50 dark:bg-gray-800 rounded-2xl border-2 border-gray-50 dark:border-gray-700">
+                    {[
+                      { color: 'bg-white', label: 'White' },
+                      { color: 'bg-yellow-100', label: 'Yellow' },
+                      { color: 'bg-blue-50', label: 'Blue' },
+                      { color: 'bg-red-50', label: 'Red' }
+                    ].map((opt) => (
+                      <button 
+                        key={opt.color}
+                        onClick={() => setPrintOptions(prev => ({...prev, labelColor: opt.color}))}
+                        className={`w-6 h-6 rounded-full border-2 transition-all ${opt.color} ${printOptions.labelColor === opt.color ? 'border-indigo-600 scale-110' : 'border-transparent'}`}
+                        title={opt.label}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Code Format Selection */}
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Design Template</label>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Label Code Format</label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { id: 'modern', label: 'Modern', icon: Palette },
-                    { id: 'industrial', label: 'Industrial', icon: Layout },
-                    { id: 'compact', label: 'Compact', icon: Box }
-                  ].map((tpl) => (
+                    { id: 'qr', label: 'QR Code', icon: QrCode },
+                    { id: 'barcode', label: 'Barcode', icon: Maximize2 },
+                    { id: 'tag', label: 'Asset Tag', icon: Hash }
+                  ].map((fmt) => (
                     <button 
-                      key={tpl.id}
-                      onClick={() => setPrintTemplate(tpl.id as any)}
+                      key={fmt.id}
+                      onClick={() => setPrintFormat(fmt.id as any)}
                       className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all ${
-                        printTemplate === tpl.id 
+                        printFormat === fmt.id 
                           ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' 
                           : 'border-gray-50 bg-gray-50 text-gray-400 dark:bg-gray-800 dark:border-gray-700'
                       }`}
                     >
-                      <tpl.icon className="w-4 h-4" />
-                      <span className="text-[10px] font-bold">{tpl.label}</span>
+                      <fmt.icon className="w-4 h-4" />
+                      <span className="text-[10px] font-bold">{fmt.label}</span>
                     </button>
                   ))}
                 </div>
@@ -1092,32 +1089,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Format Selection */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Code Format</label>
-                <div className="space-y-2">
-                  {[
-                    { id: 'qr', label: 'QR Code + Spec', icon: QrCode },
-                    { id: 'barcode', label: 'Asset Barcode', icon: Maximize2 },
-                    { id: 'tag', label: 'Industrial Tag', icon: Hash }
-                  ].map((opt) => (
-                    <button 
-                      key={opt.id}
-                      onClick={() => setPrintFormat(opt.id as any)}
-                      className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border-2 transition-all ${
-                        printFormat === opt.id 
-                          ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' 
-                          : 'border-gray-50 bg-gray-50 text-gray-400 dark:bg-gray-800 dark:border-gray-700'
-                      }`}
-                    >
-                      <opt.icon className="w-5 h-5" />
-                      <span className="text-xs font-bold flex-1 text-left">{opt.label}</span>
-                      {printFormat === opt.id && <Check className="w-4 h-4" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Advanced Options Grid */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -1143,7 +1114,7 @@ const App: React.FC = () => {
                   <select 
                     value={printSize}
                     onChange={(e) => setPrintSize(e.target.value as any)}
-                    className="w-full p-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-50 dark:border-gray-700 rounded-2xl text-[10px] font-bold text-gray-500"
+                    className="w-full p-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-50 dark:border-gray-700 rounded-2xl text-[10px] font-bold text-gray-500 outline-none focus:border-indigo-500 transition-colors"
                   >
                     <option value="sm">1" x 1" (Small)</option>
                     <option value="md">2" x 1" (Standard)</option>
@@ -1152,42 +1123,54 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Toggles */}
-              <div className="space-y-3 bg-gray-50/50 dark:bg-gray-800/50 p-4 rounded-3xl border border-gray-100 dark:border-gray-700">
-                <div className="flex items-center justify-between">
+              {/* Detail Toggles */}
+              <div className="grid grid-cols-2 gap-2 bg-gray-50/50 dark:bg-gray-800/50 p-4 rounded-3xl border border-gray-100 dark:border-gray-700">
+                <div className="flex items-center justify-between col-span-1">
                   <div className="flex items-center gap-2">
                     <Type className="w-3 h-3 text-gray-400" />
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Include Name</span>
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">Name</span>
                   </div>
                   <button 
                     onClick={() => setPrintOptions(prev => ({...prev, showName: !prev.showName}))}
-                    className={`w-10 h-5 rounded-full flex items-center px-1 transition-colors ${printOptions.showName ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                    className={`w-9 h-4.5 rounded-full flex items-center px-0.5 transition-colors ${printOptions.showName ? 'bg-indigo-600' : 'bg-gray-300'}`}
                   >
-                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${printOptions.showName ? 'translate-x-5' : 'translate-x-0'}`} />
+                    <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform ${printOptions.showName ? 'translate-x-4.5' : 'translate-x-0'}`} />
                   </button>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Hash className="w-3 h-3 text-gray-400" />
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Include SKU</span>
-                  </div>
-                  <button 
-                    onClick={() => setPrintOptions(prev => ({...prev, showSku: !prev.showSku}))}
-                    className={`w-10 h-5 rounded-full flex items-center px-1 transition-colors ${printOptions.showSku ? 'bg-indigo-600' : 'bg-gray-300'}`}
-                  >
-                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${printOptions.showSku ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between col-span-1">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="w-3 h-3 text-gray-400" />
-                    <span className="text-[10px] font-bold text-gray-500 uppercase">Include Price</span>
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">Price</span>
                   </div>
                   <button 
                     onClick={() => setPrintOptions(prev => ({...prev, showPrice: !prev.showPrice}))}
-                    className={`w-10 h-5 rounded-full flex items-center px-1 transition-colors ${printOptions.showPrice ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                    className={`w-9 h-4.5 rounded-full flex items-center px-0.5 transition-colors ${printOptions.showPrice ? 'bg-indigo-600' : 'bg-gray-300'}`}
                   >
-                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${printOptions.showPrice ? 'translate-x-5' : 'translate-x-0'}`} />
+                    <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform ${printOptions.showPrice ? 'translate-x-4.5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between col-span-1">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-3 h-3 text-gray-400" />
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">Date</span>
+                  </div>
+                  <button 
+                    onClick={() => setPrintOptions(prev => ({...prev, showDate: !prev.showDate}))}
+                    className={`w-9 h-4.5 rounded-full flex items-center px-0.5 transition-colors ${printOptions.showDate ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  >
+                    <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform ${printOptions.showDate ? 'translate-x-4.5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between col-span-1">
+                  <div className="flex items-center gap-2">
+                    <ShieldIcon className="w-3 h-3 text-gray-400" />
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">Secure</span>
+                  </div>
+                  <button 
+                    onClick={() => setPrintOptions(prev => ({...prev, securityMark: !prev.securityMark}))}
+                    className={`w-9 h-4.5 rounded-full flex items-center px-0.5 transition-colors ${printOptions.securityMark ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  >
+                    <div className={`w-3.5 h-3.5 bg-white rounded-full transition-transform ${printOptions.securityMark ? 'translate-x-4.5' : 'translate-x-0'}`} />
                   </button>
                 </div>
               </div>
