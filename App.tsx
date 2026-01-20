@@ -798,6 +798,8 @@ const App: React.FC = () => {
             setTheme={setTheme}
             privacyMode={privacyMode}
             setPrivacyMode={setPrivacyMode}
+            printOptions={printOptions}
+            setPrintOptions={setPrintOptions}
           />
         ) : currentView === View.TEAMS ? (
           renderTeams()

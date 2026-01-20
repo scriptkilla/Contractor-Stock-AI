@@ -19,7 +19,19 @@ import {
   FileJson,
   FileSpreadsheet,
   FileText,
-  Info
+  Info,
+  Printer,
+  Tag,
+  DollarSign,
+  QrCode,
+  ShieldAlert,
+  Bluetooth,
+  Smartphone,
+  Link,
+  Mail,
+  Lock,
+  KeyRound,
+  ShieldCheck
 } from 'lucide-react';
 import { db } from '../services/database';
 
@@ -39,6 +51,8 @@ interface SettingsPageProps {
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   privacyMode: boolean;
   setPrivacyMode: (v: boolean) => void;
+  printOptions: any;
+  setPrintOptions: (options: any) => void;
 }
 
 const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ isOpen, onClose, title, children }) => {
@@ -80,14 +94,21 @@ const Toggle: React.FC<{ enabled: boolean; setEnabled: (v: boolean) => void }> =
   </button>
 );
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ onClearData, onDataImport, onProfileUpdate, productCount, theme, setTheme, privacyMode, setPrivacyMode }) => {
+const SettingsPage: React.FC<SettingsPageProps> = ({ onClearData, onDataImport, onProfileUpdate, productCount, theme, setTheme, privacyMode, setPrivacyMode, printOptions, setPrintOptions }) => {
   const [userName, setUserName] = useState(() => localStorage.getItem('sv_user_name') || 'Authorized User');
   const [userEmail, setUserEmail] = useState(() => localStorage.getItem('sv_user_email') || '');
   const [profileImage, setProfileImage] = useState(() => localStorage.getItem('sv_user_img') || '');
   
   const [isPersonalInfoVisible, setIsPersonalInfoVisible] = useState(false);
   const [isLocationsVisible, setIsLocationsVisible] = useState(false);
+  const [isAddDeviceVisible, setIsAddDeviceVisible] = useState(false);
+  const [isEmailModalVisible, setIsEmailModalVisible] = useState(false);
+  const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
+  
   const [tempProfile, setTempProfile] = useState({ name: userName, email: userEmail, image: profileImage });
+  const [newEmail, setNewEmail] = useState(userEmail);
+  const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' });
+
   const [locations, setLocations] = useState<StorageLocation[]>(() => {
     const saved = localStorage.getItem('sv_storage_locations');
     return saved ? JSON.parse(saved) : [
@@ -114,6 +135,32 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClearData, onDataImport, 
     localStorage.setItem('sv_user_img', tempProfile.image);
     onProfileUpdate(tempProfile.name, tempProfile.email);
     setIsPersonalInfoVisible(false);
+  };
+
+  const handleUpdateEmail = () => {
+    if (!newEmail.includes('@')) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+    setUserEmail(newEmail);
+    localStorage.setItem('sv_user_email', newEmail);
+    onProfileUpdate(userName, newEmail);
+    setIsEmailModalVisible(false);
+    alert("Identity email updated successfully.");
+  };
+
+  const handleUpdatePassword = () => {
+    if (passwords.next !== passwords.confirm) {
+      alert("Passwords do not match.");
+      return;
+    }
+    if (passwords.next.length < 6) {
+      alert("Security key must be at least 6 characters.");
+      return;
+    }
+    setIsPasswordModalVisible(false);
+    setPasswords({ current: '', next: '', confirm: '' });
+    alert("Security access key updated.");
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -266,11 +313,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClearData, onDataImport, 
       <div className="space-y-10">
         <Section title="Account">
           <Row icon={User} title="Edit Profile" subtitle="Change name and avatar" onClick={() => { setTempProfile({ name: userName, email: userEmail, image: profileImage }); setIsPersonalInfoVisible(true); }} />
+          <Row icon={Mail} title="Update Email" subtitle="Change primary contact address" onClick={() => { setNewEmail(userEmail); setIsEmailModalVisible(true); }} />
+          <Row icon={Lock} title="Change Password" subtitle="Update security access key" onClick={() => setIsPasswordModalVisible(true)} />
           <Row icon={Shield} title="Privacy Mode" subtitle="Hide inventory values" right={<Toggle enabled={privacyMode} setEnabled={setPrivacyMode} />} />
         </Section>
 
         <Section title="Logistics Network">
           <Row icon={MapPin} title="Storage Nodes" subtitle={`${locations.length} locations configured`} onClick={() => setIsLocationsVisible(true)} />
+        </Section>
+
+        <Section title="Label Printing">
+          <Row icon={Tag} title="Show Asset Name" subtitle="Display nomenclature on label" right={<Toggle enabled={printOptions.showName} setEnabled={(v) => setPrintOptions({...printOptions, showName: v})} />} />
+          <Row icon={DollarSign} title="Include MSRP" subtitle="Display unit price on label" right={<Toggle enabled={printOptions.showPrice} setEnabled={(v) => setPrintOptions({...printOptions, showPrice: v})} />} />
+          <Row icon={QrCode} title="High Contrast" subtitle="Optimize for light scanning" right={<Toggle enabled={printOptions.highContrast} setEnabled={(v) => setPrintOptions({...printOptions, highContrast: v})} />} />
+          <Row icon={ShieldAlert} title="Security Mark" subtitle="Watermark labels for authenticity" right={<Toggle enabled={printOptions.securityMark} setEnabled={(v) => setPrintOptions({...printOptions, securityMark: v})} />} />
+        </Section>
+
+        <Section title="Hardware Connectivity">
+          <Row icon={Bluetooth} title="Add Peripheral Device" subtitle="Pair external scanners or printers" onClick={() => setIsAddDeviceVisible(true)} />
+          <Row icon={Smartphone} title="Mobile Handset Sync" subtitle="Pair additional scanning units" onClick={() => setIsAddDeviceVisible(true)} />
         </Section>
 
         <Section title="Data Integration">
@@ -323,12 +384,78 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClearData, onDataImport, 
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
               <input value={tempProfile.name} onChange={e => setTempProfile({...tempProfile, name: e.target.value})} className="w-full px-4 py-4 bg-gray-50 dark:bg-gray-800 rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email</label>
-              <input value={tempProfile.email} onChange={e => setTempProfile({...tempProfile, email: e.target.value})} className="w-full px-4 py-4 bg-gray-50 dark:bg-gray-800 rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
-            </div>
           </div>
           <button onClick={saveProfile} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg flex items-center justify-center gap-2"><Save className="w-4 h-4" /> Save Changes</button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isEmailModalVisible} onClose={() => setIsEmailModalVisible(false)} title="Update Email">
+        <div className="space-y-6">
+          <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 flex items-start gap-4">
+            <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+            <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase leading-relaxed">Changing your email will update your unique identity across all integrated logistics nodes.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">New Identity Email</label>
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input 
+                type="email"
+                value={newEmail} 
+                onChange={e => setNewEmail(e.target.value)} 
+                className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                placeholder="name@company.com"
+              />
+            </div>
+          </div>
+          <button onClick={handleUpdateEmail} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"><Save className="w-4 h-4" /> Confirm Change</button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isPasswordModalVisible} onClose={() => setIsPasswordModalVisible(false)} title="Modify Access Key">
+        <div className="space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Current Key</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input 
+                  type="password"
+                  value={passwords.current} 
+                  onChange={e => setPasswords({...passwords, current: e.target.value})} 
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">New Security Key</label>
+              <div className="relative">
+                <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input 
+                  type="password"
+                  value={passwords.next} 
+                  onChange={e => setPasswords({...passwords, next: e.target.value})} 
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                  placeholder="Min. 6 characters"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Confirm New Key</label>
+              <div className="relative">
+                <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input 
+                  type="password"
+                  value={passwords.confirm} 
+                  onChange={e => setPasswords({...passwords, confirm: e.target.value})} 
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                  placeholder="Re-enter new key"
+                />
+              </div>
+            </div>
+          </div>
+          <button onClick={handleUpdatePassword} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"><Save className="w-4 h-4" /> Update Access Key</button>
         </div>
       </Modal>
 
@@ -388,6 +515,36 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClearData, onDataImport, 
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isAddDeviceVisible} onClose={() => setIsAddDeviceVisible(false)} title="Pair New Device">
+        <div className="space-y-6 py-4">
+          <div className="flex flex-col items-center justify-center py-10 border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-[2rem] bg-gray-50 dark:bg-gray-800/20">
+             <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 rounded-full flex items-center justify-center mb-4 animate-pulse">
+               <Bluetooth className="w-8 h-8" />
+             </div>
+             <p className="text-sm font-black text-gray-400 uppercase tracking-widest text-center">Scanning for signals...</p>
+             <p className="text-[10px] text-gray-400 mt-1">Ensure Bluetooth is active on your peripheral</p>
+          </div>
+          
+          <div className="space-y-3">
+             <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Manual Pairing</h4>
+             <button className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl hover:bg-gray-50 transition-colors">
+               <div className="flex items-center gap-3">
+                 <Link className="w-4 h-4 text-gray-400" />
+                 <span className="text-sm font-bold dark:text-white">IP/Network Scanner</span>
+               </div>
+               <ChevronRight className="w-4 h-4 text-gray-300" />
+             </button>
+             <button className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl hover:bg-gray-50 transition-colors">
+               <div className="flex items-center gap-3">
+                 <QrCode className="w-4 h-4 text-gray-400" />
+                 <span className="text-sm font-bold dark:text-white">Scan Device Code</span>
+               </div>
+               <ChevronRight className="w-4 h-4 text-gray-300" />
+             </button>
           </div>
         </div>
       </Modal>
