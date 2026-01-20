@@ -78,7 +78,8 @@ interface PendingInvite {
 }
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('sv_auth') === 'true');
+  // Requirement: Always start on login page. Initialized to false.
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [products, setProducts] = useState<Product[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -207,7 +208,7 @@ const App: React.FC = () => {
           doc.text(`MSRP: $${product.price.toFixed(2)}`, margin + 5, yPos + 30);
         }
 
-        // Placeholder for QR (jsPDF doesn't native-render QR, typically we'd use a canvas/img)
+        // Placeholder for QR
         doc.setDrawColor(0);
         doc.rect(margin + labelWidth - 35, yPos + 5, 30, 30);
         doc.setFontSize(6);
