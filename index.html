@@ -14,39 +14,21 @@
 <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
     "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "html5-qrcode": "https://esm.sh/html5-qrcode@^2.3.8",
-    "jspdf": "https://esm.sh/jspdf@^2.5.1",
-    "xlsx": "https://esm.sh/xlsx@^0.18.5"
+    "jspdf": "https://esm.sh/jspdf@^4.0.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "html5-qrcode": "https://esm.sh/html5-qrcode@^2.3.8"
   }
 }
-</script>
-<script>
-  // Configure Tailwind to use 'class' strategy for dark mode
-  tailwind.config = {
-    darkMode: 'class',
-    theme: {
-      extend: {
-        // Customizations can go here if needed
-      }
-    }
-  }
-
-  // Initial theme check to prevent flash of unstyled content
-  // Default to 'dark' if no preference is found
-  const theme = localStorage.getItem('scanventory_theme') || 'dark';
-  if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    document.documentElement.classList.add('dark');
-  } else {
-    document.documentElement.classList.remove('dark');
-  }
 </script>
 </head>
 <body class="bg-gray-50 text-gray-900 dark:bg-black dark:text-white transition-colors duration-300">
   <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>
