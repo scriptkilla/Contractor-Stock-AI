@@ -142,7 +142,7 @@ const App: React.FC = () => {
   const [printSelection, setPrintSelection] = useState<'all' | 'recent' | 'custom'>('all');
   const [printFormat, setPrintFormat] = useState<'qr' | 'barcode' | 'tag'>('qr');
   const [printTemplate, setPrintTemplate] = useState<'modern' | 'industrial' | 'compact'>('modern');
-  const [printSize, setPrintSize] = useState<'sm' | 'md' | 'lg'>('md');
+  const [printSize, setPrintSelectionSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [printCopies, setPrintCopies] = useState(1);
   const [printOptions, setPrintOptions] = useState({
     showName: true,
@@ -250,8 +250,17 @@ const App: React.FC = () => {
         systemIsDark ? root.classList.add('dark') : root.classList.remove('dark');
       }
     };
+
     localStorage.setItem('scanventory_theme', theme);
     applyTheme(theme);
+
+    // Watch for system theme changes
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const listener = () => applyTheme('system');
+      mediaQuery.addEventListener('change', listener);
+      return () => mediaQuery.removeEventListener('change', listener);
+    }
   }, [theme]);
 
   const handleScan = (sku: string) => {
@@ -819,7 +828,7 @@ const App: React.FC = () => {
       {/* Delete Product Modal */}
       {productToDelete && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 text-center">
+          <div className="bg-white dark:bg-gray-900 w-full max-sm rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 text-center">
             <div className="w-24 h-24 bg-red-50 dark:bg-red-900/30 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-sm">
               <AlertTriangle className="w-12 h-12 text-red-600 dark:text-red-500" />
             </div>
@@ -1023,7 +1032,7 @@ const App: React.FC = () => {
                       <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Dimensions</h4>
                       <div className="flex bg-gray-50 dark:bg-gray-800 p-1 rounded-xl">
                         {(['sm', 'md', 'lg'] as const).map((sz) => (
-                          <button key={sz} onClick={() => setPrintSize(sz)} className={`flex-1 py-2 text-[10px] font-black rounded-lg uppercase transition-all ${printSize === sz ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500'}`}>{sz}</button>
+                          <button key={sz} onClick={() => setPrintSelectionSize(sz)} className={`flex-1 py-2 text-[10px] font-black rounded-lg uppercase transition-all ${printSize === sz ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500'}`}>{sz}</button>
                         ))}
                       </div>
                     </div>

@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Product } from '../types';
-import { analyzeProductImage } from '../services/geminiService';
-import { Sparkles, Camera, Save, Loader2, Check, Wand2, RefreshCw, MapPin, CheckSquare, Square } from 'lucide-react';
+import { analyzeProductImage, AIAnalysisError } from '../services/geminiService';
+import { Sparkles, Camera, Save, Loader2, Check, Wand2, RefreshCw, MapPin, CheckSquare, Square, X, Box, Tag, DollarSign, Hash, AlertCircle } from 'lucide-react';
 
 interface ProductFormProps {
   initialSku?: string;
@@ -32,6 +32,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
   const [availableLocations, setAvailableLocations] = useState<StorageLocation[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showAiSuccess, setShowAiSuccess] = useState(false);
+  const [aiError, setAiError] = useState<AIAnalysisError | null>(null);
   const [highlightedFields, setHighlightedFields] = useState<Set<string>>(new Set());
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [autoAnalyzeEnabled] = useState(() => localStorage.getItem('sv_ai_auto') !== 'false');
@@ -85,30 +86,42 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
 
     setIsAnalyzing(true);
     setShowAiSuccess(false);
+    setAiError(null);
     setHighlightedFields(new Set());
 
-    const result = await analyzeProductImage(targetImage);
-    
-    if (result) {
-      setFormData(prev => ({
-        ...prev,
-        sku: (!initialProduct && result.sku) ? result.sku : prev.sku,
-        name: result.name || prev.name,
-        category: result.category || prev.category,
-        description: result.description || prev.description,
-        price: result.estimatedPrice || prev.price
-      }));
+    try {
+      const { data: result, error } = await analyzeProductImage(targetImage);
       
-      const fields = ['name', 'category', 'description', 'price'];
-      if (!initialProduct && result.sku) fields.push('sku');
-      
-      const newHighlights = new Set(fields);
-      setHighlightedFields(newHighlights);
-      setShowAiSuccess(true);
-      
-      setTimeout(() => setHighlightedFields(new Set()), 4000);
+      if (error) {
+        setAiError(error);
+        return;
+      }
+
+      if (result) {
+        setFormData(prev => ({
+          ...prev,
+          sku: (!initialProduct && result.sku) ? result.sku : prev.sku,
+          name: result.name || prev.name,
+          category: result.category || prev.category,
+          description: result.description || prev.description,
+          price: result.estimatedPrice || prev.price
+        }));
+        
+        const fields = ['name', 'category', 'description', 'price'];
+        if (!initialProduct && result.sku) fields.push('sku');
+        
+        const newHighlights = new Set(fields);
+        setHighlightedFields(newHighlights);
+        setShowAiSuccess(true);
+        
+        setTimeout(() => setHighlightedFields(new Set()), 4000);
+      }
+    } catch (error) {
+      console.error("AI Assist failed:", error);
+      setAiError('UNKNOWN');
+    } finally {
+      setIsAnalyzing(false);
     }
-    setIsAnalyzing(false);
   }, [previewImage, initialProduct]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,196 +165,178 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
   `;
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl p-8 max-w-2xl mx-auto border border-gray-100 dark:border-gray-800 transition-colors duration-300 overflow-hidden">
-      <div className="flex justify-between items-start mb-8">
+    <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl p-8 max-w-2xl mx-auto border border-gray-100 dark:border-gray-800 transition-colors duration-300 overflow-hidden relative">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 rounded-full -mr-16 -mt-16 blur-3xl pointer-events-none" />
+      
+      <div className="flex justify-between items-start mb-8 relative z-10">
         <div className="space-y-1">
           <h2 className="text-3xl font-black tracking-tight text-gray-900 dark:text-white">
             {initialProduct ? 'Update Entry' : 'New Asset'}
           </h2>
-          <div className="flex items-center gap-2">
-            {showAiSuccess ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full text-[10px] font-bold uppercase tracking-wider animate-in fade-in zoom-in duration-300">
-                <Check className="w-3 h-3" /> Smart Matched
-              </div>
-            ) : (
-              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Complete the product details below</p>
-            )}
+          <div className="flex flex-col gap-2">
+             {showAiSuccess && (
+               <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full text-[10px] font-black uppercase animate-in slide-in-from-left-2 self-start">
+                 <Sparkles className="w-3 h-3" />
+                 AI Optimized
+               </div>
+             )}
+             {aiError && (
+               <div className="flex items-center gap-1.5 px-3 py-1 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full text-[10px] font-black uppercase animate-in slide-in-from-left-2 self-start">
+                 <AlertCircle className="w-3 h-3" />
+                 {aiError === 'QUOTA_EXCEEDED' ? 'AI Busy (Quota Reached)' : 'AI Error (Retrying...)'}
+               </div>
+             )}
           </div>
         </div>
-
-        <button 
-          type="button"
-          onClick={() => handleAiAssist()}
-          disabled={!previewImage || isAnalyzing}
-          className={`
-            group flex items-center gap-2 px-5 py-3 rounded-2xl transition-all font-bold text-sm relative overflow-hidden
-            ${isAnalyzing 
-              ? 'bg-indigo-50 text-indigo-300 dark:bg-indigo-900/20' 
-              : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-xl hover:shadow-indigo-500/20 active:scale-95'}
-            disabled:opacity-60
-          `}
-        >
-          {isAnalyzing ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /><span>Thinking...</span></>
-          ) : (
-            <><Wand2 className={`w-4 h-4 transition-transform ${previewImage ? 'group-hover:rotate-12' : ''}`} />AI Intelligence</>
-          )}
+        <button onClick={onCancel} className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
+          <X className="w-6 h-6" />
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-7">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Asset Reference (SKU)</label>
-              <input
-                required
-                className={inputClasses('sku')}
-                value={formData.sku}
-                onChange={e => setFormData({ ...formData, sku: e.target.value })}
-                readOnly={!!initialProduct}
-                placeholder={isAnalyzing ? "Scanning ID..." : "0000000000"}
-              />
-            </div>
-            
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Product Designation</label>
-              <input
-                required
-                className={inputClasses('name')}
-                value={formData.name}
-                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                placeholder={isAnalyzing ? "AI is identifying..." : "Official name..."}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Classification</label>
-              <input
-                className={inputClasses('category')}
-                value={formData.category}
-                onChange={e => setFormData({ ...formData, category: e.target.value })}
-                placeholder="Hardware, Parts, etc."
-              />
-            </div>
-          </div>
-
+      <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
+        <div className="flex flex-col items-center">
           <div className="relative group">
-            <div className={`
-              h-full min-h-[220px] rounded-3xl border-2 border-dashed transition-all duration-500 overflow-hidden flex flex-col items-center justify-center p-4
-              ${previewImage ? 'border-transparent' : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 hover:bg-gray-100 dark:hover:bg-gray-900'}
-            `}>
+            <div className={`w-40 h-40 rounded-[2.5rem] bg-gray-50 dark:bg-gray-800 border-2 border-dashed ${isAnalyzing ? 'border-indigo-500 animate-pulse' : 'border-gray-200 dark:border-gray-700'} overflow-hidden flex items-center justify-center transition-all`}>
               {previewImage ? (
-                <img 
-                  src={previewImage} 
-                  alt="Preview" 
-                  className={`w-full h-full object-cover absolute inset-0 transition-all duration-1000 ${isAnalyzing ? 'scale-110 blur-sm' : 'group-hover:scale-105'}`} 
-                />
+                <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
               ) : (
-                <div className="text-center space-y-3">
-                  <div className="w-12 h-12 bg-white dark:bg-gray-900 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
-                    <Camera className="w-6 h-6 text-gray-400 dark:text-gray-600" />
-                  </div>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">Capture Visual</p>
+                <div className="text-center p-4">
+                  <Box className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">No Media<br/>Captured</p>
                 </div>
               )}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="absolute inset-0 opacity-0 cursor-pointer z-20"
-                onChange={handleImageUpload}
-                disabled={isAnalyzing}
-              />
             </div>
+            <label className="absolute bottom-1 -right-1 p-3 bg-indigo-600 text-white rounded-2xl shadow-xl hover:scale-110 transition-all cursor-pointer">
+              <Camera className="w-5 h-5" />
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+            </label>
+            {previewImage && (
+              <button 
+                type="button"
+                onClick={() => handleAiAssist()}
+                disabled={isAnalyzing}
+                className={`absolute -top-1 -left-1 p-3 rounded-2xl shadow-xl transition-all ${isAnalyzing ? 'bg-gray-200 cursor-not-allowed' : 'bg-emerald-500 text-white hover:scale-110'}`}
+              >
+                {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Multi-Location Facility Network Assignment */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Facility Network Links</label>
-            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">{(formData.locations || []).length} Nodes Connected</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+              <Hash className="w-3 h-3" /> Asset Sku
+            </label>
+            <input 
+              required
+              value={formData.sku}
+              onChange={e => setFormData({...formData, sku: e.target.value})}
+              className={inputClasses('sku')}
+              placeholder="SKU-XXX-XXX"
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3 max-h-[160px] overflow-y-auto p-1 custom-scrollbar">
-            {availableLocations.length > 0 ? (
-              availableLocations.map(loc => {
-                const isSelected = (formData.locations || []).includes(loc.name);
-                return (
-                  <button
-                    key={loc.id}
-                    type="button"
-                    onClick={() => toggleLocation(loc.name)}
-                    className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                      isSelected 
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' 
-                        : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-indigo-200'
-                    }`}
-                  >
-                    {isSelected ? <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" /> : <Square className="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0" />}
-                    <div className="min-w-0">
-                      <div className={`text-xs font-black truncate ${isSelected ? 'text-indigo-900 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400'}`}>
-                        {loc.name}
-                      </div>
-                      <div className="text-[8px] font-bold text-gray-400 truncate uppercase tracking-tighter">{loc.type}</div>
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              <div className="col-span-2 p-6 text-center bg-gray-50 dark:bg-gray-800 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
-                <MapPin className="w-6 h-6 text-gray-300 mx-auto mb-2" />
-                <p className="text-[10px] font-bold text-gray-400 uppercase">No storage nodes configured in settings.</p>
-              </div>
-            )}
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+              <Tag className="w-3 h-3" /> Category
+            </label>
+            <input 
+              required
+              value={formData.category}
+              onChange={e => setFormData({...formData, category: e.target.value})}
+              className={inputClasses('category')}
+              placeholder="e.g. Hardware, Electrical"
+            />
+          </div>
+
+          <div className="space-y-1.5 md:col-span-2">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Asset Nomenclature</label>
+            <input 
+              required
+              value={formData.name}
+              onChange={e => setFormData({...formData, name: e.target.value})}
+              className={inputClasses('name')}
+              placeholder="Full Product Name"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+              <DollarSign className="w-3 h-3" /> Unit Price
+            </label>
+            <input 
+              type="number"
+              step="0.01"
+              value={formData.price}
+              onChange={e => setFormData({...formData, price: parseFloat(e.target.value) || 0})}
+              className={inputClasses('price')}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Stock Quantity</label>
+            <input 
+              type="number"
+              value={formData.quantity}
+              onChange={e => setFormData({...formData, quantity: parseInt(e.target.value) || 0})}
+              className={inputClasses('quantity')}
+            />
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Technical Intelligence Log</label>
-          <textarea
-            rows={2}
-            className={inputClasses('description')}
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Documentation & Specification</label>
+          <textarea 
+            rows={3}
             value={formData.description}
-            onChange={e => setFormData({ ...formData, description: e.target.value })}
-            placeholder="Key specs, maintenance notes..."
+            onChange={e => setFormData({...formData, description: e.target.value})}
+            className={inputClasses('description') + ' resize-none'}
+            placeholder="Technical details, material specs..."
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Aggregate Stock</label>
-            <input
-              type="number"
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
-              value={formData.quantity}
-              onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Unit Asset Value ($)</label>
-            <input
-              type="number"
-              step="0.01"
-              className={inputClasses('price')}
-              value={formData.price}
-              onChange={e => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-            />
+        <div className="space-y-3">
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+            <MapPin className="w-3 h-3" /> Logistical Nodes
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {availableLocations.map(loc => {
+              const isSelected = formData.locations?.includes(loc.name);
+              return (
+                <button
+                  key={loc.id}
+                  type="button"
+                  onClick={() => toggleLocation(loc.name)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none' : 'bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:bg-gray-100'}`}
+                >
+                  {isSelected ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                  {loc.name}
+                </button>
+              );
+            })}
+            {availableLocations.length === 0 && (
+              <p className="text-xs text-gray-400 italic">No storage nodes configured in settings.</p>
+            )}
           </div>
         </div>
 
-        <div className="flex gap-4 pt-4">
-          <button type="button" onClick={onCancel} className="flex-1 px-6 py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl hover:bg-gray-200 font-bold transition-all">Discard</button>
-          <button type="submit" disabled={isAnalyzing} className="flex-[1.5] flex items-center justify-center gap-3 px-6 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-black shadow-xl transition-all disabled:opacity-50">
-            <Save className="w-5 h-5" />{initialProduct ? 'Update Manifest' : 'Finalize Asset'}
+        <div className="flex gap-4 pt-6">
+          <button 
+            type="button" 
+            onClick={onCancel} 
+            className="flex-1 py-4 bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] hover:bg-gray-100 transition-all"
+          >
+            Discard
+          </button>
+          <button 
+            type="submit" 
+            className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            <Save className="w-4 h-4" /> Commit To Ledger
           </button>
         </div>
       </form>
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; }
-      `}</style>
     </div>
   );
 };
