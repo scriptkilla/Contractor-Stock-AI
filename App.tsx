@@ -47,7 +47,12 @@ import {
   Send, 
   Clock, 
   Briefcase,
-  Palette
+  Palette,
+  MapPin,
+  ShieldAlert,
+  ExternalLink,
+  Info,
+  Layers
 } from 'lucide-react';
 
 interface TeamMember {
@@ -75,11 +80,33 @@ const App: React.FC = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [scannedResult, setScannedResult] = useState<{sku: string, product?: Product} | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
-  const [privacyMode, setPrivacyMode] = useState(false);
+  const [privacyMode, setPrivacyMode] = useState(() => localStorage.getItem('sv_privacy_mode') === 'true');
   const [inventorySearch, setInventorySearch] = useState('');
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [selectedProductForView, setSelectedProductForView] = useState<Product | null>(null);
 
-  // Teams State - Initialized with only the Owner
+  // Load Granular Privacy Options
+  const [privacyOptions, setPrivacyOptions] = useState(() => {
+    const saved = localStorage.getItem('sv_privacy_opts');
+    return saved ? JSON.parse(saved) : {
+      obfuscateValues: true,
+      obfuscateStock: true,
+      blurImages: false,
+      autoActivate: false
+    };
+  });
+
+  // Re-sync privacy options whenever settings might have changed
+  useEffect(() => {
+    const handleStorage = () => {
+      const saved = localStorage.getItem('sv_privacy_opts');
+      if (saved) setPrivacyOptions(JSON.parse(saved));
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  // Teams State
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
     { 
       id: '1', 
@@ -97,8 +124,6 @@ const App: React.FC = () => {
   const [memberToEdit, setMemberToEdit] = useState<TeamMember | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'Manager' | 'Staff'>('Staff');
-
-  // Pending Invites State - Start empty
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [isPendingInvitesModalOpen, setIsPendingInvitesModalOpen] = useState(false);
 
@@ -122,7 +147,50 @@ const App: React.FC = () => {
 
   const memberPhotoInputRef = useRef<HTMLInputElement>(null);
 
-  // Lifted Theme State
+  // Fix: Added missing LabelPreview component to resolve the "Cannot find name 'LabelPreview'" error
+  const LabelPreview = () => {
+    return (
+      <div className={`aspect-[4/3] w-full max-w-[300px] mx-auto ${printOptions.labelColor} border-2 border-gray-200 dark:border-gray-700 rounded-2xl shadow-inner flex flex-col items-center justify-center p-6 relative overflow-hidden transition-all duration-500`}>
+        <div className={`flex flex-col items-center justify-center w-full h-full gap-4 ${printOptions.highContrast ? 'text-black' : 'text-gray-700'}`}>
+          {printFormat === 'qr' && (
+            <div className="w-32 h-32 bg-gray-100 rounded-xl flex items-center justify-center border-4 border-gray-200">
+              <QrCode className="w-20 h-20 text-black" />
+            </div>
+          )}
+          {printFormat === 'barcode' && (
+            <div className="w-full h-24 bg-white flex flex-col items-center justify-center border border-gray-100 p-2">
+              <div className="flex gap-1 h-12 w-full justify-center">
+                {[...Array(24)].map((_, i) => (
+                  <div key={i} className={`h-full bg-black ${i % 3 === 0 ? 'w-1' : 'w-0.5'}`} />
+                ))}
+              </div>
+              <span className="text-[10px] font-mono mt-2 tracking-widest">SKU-SAMPLE-ID</span>
+            </div>
+          )}
+          {printFormat === 'tag' && (
+            <div className="w-full space-y-2 text-center">
+              <div className="w-8 h-8 rounded-full border-2 border-dashed border-gray-400 mx-auto" />
+              <div className="h-0.5 w-full bg-gray-200" />
+            </div>
+          )}
+
+          <div className="text-center space-y-1">
+            {printOptions.showName && <h4 className="font-black text-sm uppercase tracking-tight">Sample Asset Name</h4>}
+            {printOptions.showSku && <p className="text-[10px] font-mono opacity-60">REF-00X-992</p>}
+            {printOptions.showPrice && <p className="text-xs font-bold">$129.00</p>}
+            {printOptions.showDate && <p className="text-[8px] font-medium opacity-40 uppercase">{new Date().toLocaleDateString()}</p>}
+          </div>
+        </div>
+        
+        {printOptions.securityMark && (
+          <div className="absolute top-2 right-2 opacity-20">
+            <ShieldIcon className="w-4 h-4" />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
     return (localStorage.getItem('scanventory_theme') as 'light' | 'dark' | 'system') || 'dark';
   });
@@ -130,6 +198,10 @@ const App: React.FC = () => {
   useEffect(() => {
     setProducts(db.getProducts());
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('sv_privacy_mode', String(privacyMode));
+  }, [privacyMode]);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -143,7 +215,6 @@ const App: React.FC = () => {
         systemIsDark ? root.classList.add('dark') : root.classList.remove('dark');
       }
     };
-
     localStorage.setItem('scanventory_theme', theme);
     applyTheme(theme);
   }, [theme]);
@@ -165,6 +236,7 @@ const App: React.FC = () => {
   const handleEditClick = (product: Product) => {
     setEditingProduct(product);
     setScannedResult(null);
+    setSelectedProductForView(null);
     setCurrentView(View.ADD_PRODUCT);
   };
 
@@ -173,6 +245,7 @@ const App: React.FC = () => {
       db.deleteProduct(productToDelete.id);
       setProducts(prevProducts => prevProducts.filter(p => p.id !== productToDelete.id));
       setProductToDelete(null);
+      setSelectedProductForView(null);
     }
   };
 
@@ -240,24 +313,35 @@ const App: React.FC = () => {
       p.name.toLowerCase().includes(query) || 
       p.sku.toLowerCase().includes(query) || 
       p.category.toLowerCase().includes(query) ||
-      p.description.toLowerCase().includes(query)
+      p.description.toLowerCase().includes(query) ||
+      (Array.isArray(p.locations) && p.locations.some(l => l.toLowerCase().includes(query)))
     );
   }, [products, inventorySearch]);
 
   const renderDashboard = () => (
     <div className="space-y-6 pb-24 animate-in fade-in slide-in-from-bottom-2 duration-500 max-w-5xl mx-auto w-full">
+      {privacyMode && (
+        <div className="flex items-center justify-between px-6 py-3 bg-indigo-600/10 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl animate-pulse">
+           <div className="flex items-center gap-3">
+             <ShieldAlert className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+             <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Privacy Shield Protocol Active</span>
+           </div>
+           <button onClick={() => setPrivacyMode(false)} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 hover:underline uppercase tracking-widest">Disengage</button>
+        </div>
+      )}
+
       <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-8 rounded-3xl text-white shadow-xl">
         <h1 className="text-3xl font-black mb-1 tracking-tight">Welcome Back</h1>
         <p className="text-indigo-100 mb-8 font-medium">Your inventory health is optimal.</p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20">
             <Package className="w-8 h-8 mb-3 text-indigo-200" />
-            <div className="text-3xl font-black text-white">{products.length}</div>
+            <div className={`text-3xl font-black text-white ${(privacyMode && privacyOptions.obfuscateStock) ? 'blur-md select-none' : ''}`}>{products.length}</div>
             <div className="text-sm font-bold text-indigo-100 uppercase tracking-widest">Total Assets</div>
           </div>
           <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20">
             <TrendingUp className="w-8 h-8 mb-3 text-indigo-200" />
-            <div className="text-3xl font-black text-white">
+            <div className={`text-3xl font-black text-white ${(privacyMode && privacyOptions.obfuscateValues) ? 'blur-md select-none' : ''}`}>
               ${products.reduce((acc, p) => acc + (p.price * p.quantity), 0).toLocaleString()}
             </div>
             <div className="text-sm font-bold text-indigo-100 uppercase tracking-widest">Inventory Value</div>
@@ -326,24 +410,33 @@ const App: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {products.slice(-4).reverse().map(p => (
-          <div key={p.id} className="flex items-center gap-4 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm hover:border-indigo-100 transition-all">
-            <div className="w-14 h-14 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0 border border-gray-50 dark:border-gray-700">
-              {p.imageUrl ? <img src={p.imageUrl} className="w-full h-full object-cover" /> : <Box className="text-gray-400 dark:text-gray-500" />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="font-bold text-gray-800 dark:text-white truncate">{p.name}</h4>
-              <p className="text-xs text-gray-500 dark:text-gray-200">SKU: {p.sku} • {new Date(p.lastUpdated).toLocaleDateString()}</p>
-            </div>
-            <div className="text-right shrink-0">
-              <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 block mb-1">Qty: {p.quantity}</span>
-              <div className="flex gap-1">
-                <button onClick={() => handleEditClick(p)} className="p-2 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-white rounded-lg hover:bg-indigo-100 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
-                <button onClick={() => setProductToDelete(p)} className="p-2 text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-white rounded-lg hover:bg-red-100 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+        {products.slice(-4).reverse().map(p => {
+          const locs = Array.isArray(p.locations) ? p.locations : [(p as any).location].filter(Boolean);
+          return (
+            <div 
+              key={p.id} 
+              onClick={() => setSelectedProductForView(p)}
+              className="flex items-center gap-4 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm hover:border-indigo-100 cursor-pointer transition-all active:scale-[0.98]"
+            >
+              <div className={`w-14 h-14 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0 border border-gray-50 dark:border-gray-700 ${(privacyMode && privacyOptions.blurImages) ? 'blur-md' : ''}`}>
+                {p.imageUrl ? <img src={p.imageUrl} className="w-full h-full object-cover" /> : <Box className="text-gray-400 dark:text-gray-500" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-gray-800 dark:text-white truncate">{p.name}</h4>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold uppercase truncate">
+                  SKU: {p.sku} • {locs.length > 0 ? `${locs[0]}${locs.length > 1 ? ` +${locs.length - 1}` : ''}` : 'No Node'}
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <span className={`text-sm font-black text-indigo-600 dark:text-indigo-400 block mb-1 ${(privacyMode && privacyOptions.obfuscateStock) ? 'blur-md select-none' : ''}`}>Qty: {p.quantity}</span>
+                <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => handleEditClick(p)} className="p-2 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-white rounded-lg hover:bg-indigo-100 transition-colors"><Edit2 className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => setProductToDelete(p)} className="p-2 text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-white rounded-lg hover:bg-red-100 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {products.length === 0 && <p className="text-sm text-gray-400 italic px-1">No recent activity found.</p>}
       </div>
     </div>
@@ -379,7 +472,7 @@ const App: React.FC = () => {
           <input 
             value={inventorySearch}
             onChange={(e) => setInventorySearch(e.target.value)}
-            placeholder="Search by name, SKU, or category..." 
+            placeholder="Search by name, SKU, facility, or category..." 
             className="w-full pl-12 pr-10 py-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 text-base dark:text-white transition-all outline-none shadow-sm"
           />
           {inventorySearch && (
@@ -389,47 +482,62 @@ const App: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filteredInventory.map(product => (
-          <div key={product.id} className="bg-white dark:bg-gray-900 p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col gap-4 hover:border-indigo-100 dark:hover:border-indigo-900/30 transition-all group relative overflow-hidden">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center justify-center border border-gray-100 dark:border-gray-700 overflow-hidden shrink-0">
-                {product.imageUrl ? <img src={product.imageUrl} className="w-full h-full object-cover" /> : <Box className="w-7 h-7 text-gray-300 dark:text-gray-500" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-white uppercase">{product.sku}</span>
-                  <span className="text-[10px] font-black px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded uppercase tracking-tighter">{product.category}</span>
+        {filteredInventory.map(product => {
+          const locs = Array.isArray(product.locations) ? product.locations : [(product as any).location].filter(Boolean);
+          return (
+            <div 
+              key={product.id} 
+              onClick={() => setSelectedProductForView(product)}
+              className="bg-white dark:bg-gray-900 p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col gap-4 hover:border-indigo-100 dark:hover:border-indigo-900/30 transition-all group relative overflow-hidden cursor-pointer active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-4">
+                <div className={`w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-2xl flex items-center justify-center border border-gray-100 dark:border-gray-700 overflow-hidden shrink-0 ${(privacyMode && privacyOptions.blurImages) ? 'blur-md' : ''}`}>
+                  {product.imageUrl ? <img src={product.imageUrl} className="w-full h-full object-cover" /> : <Box className="w-7 h-7 text-gray-300 dark:text-gray-500" />}
                 </div>
-                <h3 className="font-bold text-gray-900 dark:text-white truncate text-lg">{product.name}</h3>
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-white uppercase">{product.sku}</span>
+                    <span className="text-[10px] font-black px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded uppercase tracking-tighter">{product.category}</span>
+                  </div>
+                  <h3 className="font-bold text-gray-900 dark:text-white truncate text-lg">{product.name}</h3>
+                </div>
               </div>
-            </div>
-            
-            <p className="text-xs text-gray-500 dark:text-gray-200 line-clamp-2 min-h-[2.5em]">{product.description || "No description provided for this asset."}</p>
-            
-            <div className="flex items-center justify-between mt-2 pt-4 border-t border-gray-50 dark:border-gray-800">
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest">Asset Value</span>
-                <span className="text-xl font-black text-gray-900 dark:text-white">${product.price.toFixed(2)}</span>
+              
+              <div className="flex flex-wrap gap-1.5 h-[1.8rem] overflow-hidden">
+                {locs.map((l, idx) => (
+                  <span key={idx} className="text-[9px] font-bold px-2 py-0.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded flex items-center gap-1 whitespace-nowrap">
+                    <MapPin className="w-2.5 h-2.5" />
+                    {l}
+                  </span>
+                ))}
+                {locs.length === 0 && <span className="text-[9px] font-bold px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-400 rounded">No Node</span>}
               </div>
-              <div className="flex flex-col items-end">
-                <span className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest">Stock Level</span>
-                <span className={`text-sm font-black px-3 py-1 rounded-full mt-1 ${product.quantity < 5 ? 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-white' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-white'}`}>
-                  {product.quantity} Units
-                </span>
+              
+              <div className="flex items-center justify-between mt-2 pt-4 border-t border-gray-50 dark:border-gray-800">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest">Asset Value</span>
+                  <span className={`text-xl font-black text-gray-900 dark:text-white ${(privacyMode && privacyOptions.obfuscateValues) ? 'blur-md select-none' : ''}`}>${product.price.toFixed(2)}</span>
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest">Stock Level</span>
+                  <span className={`text-sm font-black px-3 py-1 rounded-full mt-1 ${product.quantity < 5 ? 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-white' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-white'} ${(privacyMode && privacyOptions.obfuscateStock) ? 'blur-md select-none' : ''}`}>
+                    {product.quantity} Units
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2 mt-2">
-              <button onClick={() => handleEditClick(product)} className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all">
-                <Edit2 className="w-3.5 h-3.5" />
-                Edit
-              </button>
-              <button onClick={() => setProductToDelete(product)} className="px-4 py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-white rounded-xl hover:bg-red-100 transition-all active:scale-95">
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2 mt-2" onClick={e => e.stopPropagation()}>
+                <button onClick={() => handleEditClick(product)} className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all">
+                  <Edit2 className="w-3.5 h-3.5" />
+                  Edit
+                </button>
+                <button onClick={() => setProductToDelete(product)} className="px-4 py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-white rounded-xl hover:bg-red-100 transition-all active:scale-95">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {filteredInventory.length === 0 && (
           <div className="text-center py-24 bg-white dark:bg-gray-900 rounded-[3rem] border-2 border-dashed border-gray-200 dark:border-gray-800 col-span-full animate-in fade-in duration-700 shadow-sm">
             <Package className="w-20 h-20 text-gray-200 dark:text-gray-800 mx-auto mb-6" />
@@ -526,107 +634,6 @@ const App: React.FC = () => {
     </div>
   );
 
-  const renderBarcodeSVG = (sku: string, height: number = 40, isInverse: boolean = false) => {
-    if (!sku) return null;
-    const bars = [];
-    let currentX = 0;
-    const color = isInverse ? "white" : "currentColor";
-    // Simple pseudo-barcode algorithm using char codes
-    for (let i = 0; i < sku.length; i++) {
-      const code = sku.charCodeAt(i);
-      const w1 = (code % 3) + 1;
-      const g = (code % 2) + 1;
-      const w2 = ((code >> 2) % 3) + 1;
-      bars.push(<rect key={`${i}-1`} x={currentX} y="0" width={w1} height={height} fill={color} />);
-      currentX += w1 + g;
-      bars.push(<rect key={`${i}-2`} x={currentX} y="0" width={w2} height={height} fill={color} />);
-      currentX += w2 + g;
-    }
-    return (
-      <svg width="100%" height={height} viewBox={`0 0 ${currentX} ${height}`} preserveAspectRatio="none" className={isInverse ? "text-white" : "text-gray-900 dark:text-white"}>
-        {bars}
-      </svg>
-    );
-  };
-
-  const LabelPreview = () => {
-    const previewProduct = products[0] || {
-      name: 'Industrial Valve 400 Series',
-      sku: 'SKU-9921-X',
-      price: 1240.50,
-      lastUpdated: new Date().toISOString()
-    };
-
-    const labelSizeClasses = {
-      sm: 'w-48 h-48',
-      md: 'w-72 h-36',
-      lg: 'w-full h-48'
-    }[printSize];
-
-    const isBlackLabel = printOptions.labelColor === 'bg-black';
-
-    return (
-      <div className="bg-black p-10 rounded-[2.5rem] border border-zinc-800 flex flex-col items-center gap-8 shadow-inner overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-          <div className="absolute inset-0 bg-[radial-gradient(#333_1px,transparent_1px)] [background-size:20px_20px]" />
-        </div>
-        
-        <div className="flex items-center gap-3 relative z-10">
-          <div className="w-2.5 h-2.5 bg-indigo-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(99,102,241,0.8)]" />
-          <span className="text-[10px] font-black text-zinc-500 dark:text-white uppercase tracking-[0.3em]">Master View Engine</span>
-        </div>
-        
-        <div className={`${labelSizeClasses} ${printOptions.labelColor} rounded-2xl shadow-2xl border ${printOptions.highContrast ? (isBlackLabel ? 'border-white/50 border-2' : 'border-black border-2') : 'border-transparent'} p-8 flex items-center gap-8 relative overflow-hidden transition-all duration-700 hover:scale-[1.02] active:scale-95 cursor-default z-10`}>
-          {printOptions.securityMark && (
-            <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full flex items-center justify-center opacity-10 rotate-12 ${isBlackLabel ? 'bg-white' : 'bg-black'}`}>
-              <ShieldIcon className={`w-10 h-10 ${isBlackLabel ? 'text-white' : 'text-gray-400 dark:text-white'}`} />
-            </div>
-          )}
-          
-          <div className="flex-1 min-w-0 flex flex-col justify-between h-full">
-            <div>
-              {printOptions.showName && <h4 className={`text-lg font-black truncate uppercase tracking-tighter ${isBlackLabel ? 'text-white' : (printOptions.highContrast ? 'text-black' : 'text-gray-900')}`}>{previewProduct.name}</h4>}
-              {printOptions.showSku && (
-                <div className="flex items-center gap-2 mt-1">
-                  <Hash className={`w-4 h-4 ${isBlackLabel ? 'text-white/60' : (printOptions.highContrast ? 'text-black' : 'text-gray-400')}`} />
-                  <p className={`text-xs font-mono font-bold ${isBlackLabel ? 'text-white/60' : (printOptions.highContrast ? 'text-black' : 'text-gray-500')}`}>{previewProduct.sku}</p>
-                </div>
-              )}
-            </div>
-            
-            <div className="space-y-2">
-              {printOptions.showBarcode && (
-                <div className={`w-full h-8 mb-2 ${isBlackLabel ? 'opacity-100' : (printOptions.highContrast ? 'opacity-100' : 'opacity-80')}`}>
-                  {renderBarcodeSVG(previewProduct.sku, 32, isBlackLabel)}
-                </div>
-              )}
-              {printOptions.showPrice && <div className={`text-2xl font-black ${isBlackLabel ? 'text-white' : (printOptions.highContrast ? 'text-black underline decoration-2 decoration-indigo-500 underline-offset-4' : 'text-indigo-600')}`}>${previewProduct.price.toLocaleString()}</div>}
-              {printOptions.showDate && <div className={`text-[10px] font-black uppercase tracking-widest ${isBlackLabel ? 'text-white/40' : (printOptions.highContrast ? 'text-black' : 'text-gray-400')}`}>{new Date(previewProduct.lastUpdated).toLocaleDateString()}</div>}
-            </div>
-          </div>
-
-          <div className="shrink-0 flex flex-col items-center justify-center gap-3">
-            {printFormat === 'qr' ? (
-              <div className={`p-3 bg-white rounded-xl shadow-sm border ${printOptions.highContrast || isBlackLabel ? 'border-zinc-200 border' : 'border-gray-50'}`}><QrCode className="w-20 h-20 text-gray-900" /></div>
-            ) : printFormat === 'barcode' ? (
-              <div className={`p-4 bg-white rounded-xl shadow-sm border flex items-center justify-center h-24 w-32 ${printOptions.highContrast || isBlackLabel ? 'border-zinc-200 border' : 'border-gray-50'}`}>
-                {renderBarcodeSVG(previewProduct.sku, 60, false)}
-              </div>
-            ) : (
-              <div className={`w-24 h-24 rounded-2xl flex flex-col items-center justify-center p-3 ${isBlackLabel ? 'bg-white text-black' : (printOptions.highContrast ? 'bg-black text-white' : 'bg-gray-900 text-white')}`}>
-                <Hash className="w-8 h-8 mb-2 opacity-50" />
-                <span className="text-xs font-black tracking-tighter truncate w-full text-center">{previewProduct.sku.split('-')[0]}</span>
-              </div>
-            )}
-            <span className={`text-[10px] font-black uppercase tracking-widest ${isBlackLabel ? 'text-white/50' : (printOptions.highContrast ? 'text-black' : 'text-gray-300')}`}>{printFormat}</span>
-          </div>
-          
-          {printTemplate === 'industrial' && <div className={`absolute inset-x-0 bottom-0 h-2 ${isBlackLabel ? 'bg-white/20' : (printOptions.highContrast ? 'bg-black' : 'bg-gray-900/10')}`} />}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-white transition-colors duration-300 flex flex-col">
       <div className="flex-1 w-full px-4 pt-8 pb-32">
@@ -664,9 +671,116 @@ const App: React.FC = () => {
         )}
       </div>
 
+      {/* Asset Insight Modal */}
+      {selectedProductForView && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[90] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-[3rem] overflow-hidden shadow-2xl flex flex-col border border-gray-100 dark:border-gray-800 animate-in zoom-in-95 duration-300 max-h-[90vh]">
+            <div className="relative h-64 shrink-0 group">
+              {selectedProductForView.imageUrl ? (
+                <img src={selectedProductForView.imageUrl} className={`w-full h-full object-cover ${(privacyMode && privacyOptions.blurImages) ? 'blur-xl' : ''}`} />
+              ) : (
+                <div className="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                  <Box className="w-20 h-20 text-gray-300 dark:text-gray-700" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+              <button onClick={() => setSelectedProductForView(null)} className="absolute top-6 right-6 p-3 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-2xl text-white transition-all">
+                <X className="w-6 h-6" />
+              </button>
+              <div className="absolute bottom-6 left-8 right-8">
+                <div className="flex flex-wrap gap-2 mb-2">
+                  <span className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg">{selectedProductForView.category}</span>
+                </div>
+                <h3 className="text-3xl font-black text-white tracking-tight leading-tight truncate">{selectedProductForView.name}</h3>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Asset Reference</span>
+                  <div className="flex items-center gap-2">
+                    <Hash className="w-4 h-4 text-indigo-500" />
+                    <span className="font-mono font-bold dark:text-white">{selectedProductForView.sku}</span>
+                  </div>
+                </div>
+                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Operational Value</span>
+                  <div className={`text-xl font-black dark:text-white ${(privacyMode && privacyOptions.obfuscateValues) ? 'blur-md select-none' : ''}`}>
+                    ${selectedProductForView.price.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Layers className="w-3 h-3" /> Facility Network Assignments
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {(Array.isArray(selectedProductForView.locations) ? selectedProductForView.locations : [(selectedProductForView as any).location].filter(Boolean)).map((l, i) => (
+                      <span key={i} className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 dark:border-emerald-800 flex items-center gap-2">
+                        <MapPin className="w-3 h-3" /> {l}
+                      </span>
+                    ))}
+                    {(!selectedProductForView.locations || selectedProductForView.locations.length === 0) && (
+                      <span className="text-xs text-gray-400 font-bold italic px-1">No storage nodes assigned.</span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Info className="w-3 h-3" /> Technical Intelligence
+                  </h4>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed font-medium">
+                    {selectedProductForView.description || "No technical documentation available for this asset signature."}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-[2rem] border border-indigo-100 dark:border-indigo-800">
+                   <div>
+                     <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block mb-1">Aggregate Inventory State</span>
+                     <div className={`text-3xl font-black text-indigo-900 dark:text-white ${(privacyMode && privacyOptions.obfuscateStock) ? 'blur-md select-none' : ''}`}>
+                       {selectedProductForView.quantity} <span className="text-sm font-bold opacity-60">Units Total</span>
+                     </div>
+                   </div>
+                   <div className="flex flex-col items-end">
+                      <div className="flex gap-1 mb-1">
+                        {[...Array(5)].map((_, i) => (
+                          <div key={i} className={`w-1 h-6 rounded-full ${i < (selectedProductForView.quantity > 5 ? 5 : selectedProductForView.quantity) ? 'bg-indigo-500' : 'bg-indigo-200 dark:bg-indigo-800'}`} />
+                        ))}
+                      </div>
+                      <span className="text-[8px] font-black text-indigo-500 uppercase">Telemetry active</span>
+                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-8 border-t dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 flex gap-4 shrink-0">
+               <button 
+                onClick={() => handleEditClick(selectedProductForView)}
+                className="flex-1 py-4 bg-white dark:bg-gray-800 text-gray-800 dark:text-white border border-gray-200 dark:border-gray-700 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-100 transition-all flex items-center justify-center gap-2"
+               >
+                 <Edit2 className="w-4 h-4 text-indigo-500" /> Edit Manifest
+               </button>
+               <button 
+                onClick={() => {
+                  setSelectedProductForView(null);
+                  setIsPrintModalOpen(true);
+                }}
+                className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+               >
+                 <Printer className="w-4 h-4" /> Print Protocol
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Delete Product Modal */}
       {productToDelete && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-6 animate-in fade-in duration-300">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 text-center">
             <div className="w-24 h-24 bg-red-50 dark:bg-red-900/30 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-sm">
               <AlertTriangle className="w-12 h-12 text-red-600 dark:text-red-500" />
@@ -696,31 +810,19 @@ const App: React.FC = () => {
                 <p className="text-sm text-gray-500 dark:text-gray-200 font-medium">Grant access to your organization.</p>
               </div>
             </div>
-
             <div className="space-y-6 mb-10">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest ml-1">Email Address</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input 
-                    type="email" 
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="teammate@company.com"
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                  />
+                  <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="teammate@company.com" className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
                 </div>
               </div>
-
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest ml-1">Assigned Role</label>
                 <div className="grid grid-cols-2 gap-3">
                   {['Manager', 'Staff'].map((role) => (
-                    <button 
-                      key={role}
-                      onClick={() => setInviteRole(role as any)}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${inviteRole === role ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-600 dark:text-white' : 'border-gray-50 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500'}`}
-                    >
+                    <button key={role} onClick={() => setInviteRole(role as any)} className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${inviteRole === role ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-600 dark:text-white' : 'border-gray-50 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500'}`}>
                       {role === 'Manager' ? <ShieldCheck className="w-5 h-5" /> : <Briefcase className="w-5 h-5" />}
                       <span className="text-xs font-black uppercase tracking-widest">{role}</span>
                     </button>
@@ -728,21 +830,9 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-
             <div className="flex flex-col gap-3">
-              <button 
-                onClick={handleInvite} 
-                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs"
-              >
-                <Send className="w-4 h-4" />
-                Send Invitation
-              </button>
-              <button 
-                onClick={() => setIsInviteModalOpen(false)} 
-                className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-2xl font-black hover:bg-gray-200 transition-all uppercase tracking-widest text-xs"
-              >
-                Cancel
-              </button>
+              <button onClick={handleInvite} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs"><Send className="w-4 h-4" /> Send Invitation</button>
+              <button onClick={() => setIsInviteModalOpen(false)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-2xl font-black hover:bg-gray-200 transition-all uppercase tracking-widest text-xs">Cancel</button>
             </div>
           </div>
         </div>
@@ -759,7 +849,6 @@ const App: React.FC = () => {
               </div>
               <button onClick={() => setIsPendingInvitesModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"><X className="w-6 h-6" /></button>
             </div>
-
             <div className="flex-1 overflow-y-auto pr-2 space-y-4">
               {pendingInvites.length === 0 ? (
                 <div className="text-center py-20 bg-gray-50 dark:bg-gray-800/50 rounded-[2.5rem] border-2 border-dashed border-gray-200 dark:border-gray-700">
@@ -775,9 +864,7 @@ const App: React.FC = () => {
                       </div>
                       <div>
                         <div className="font-bold dark:text-white truncate max-w-[150px]">{invite.email}</div>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-300 font-black uppercase tracking-widest">
-                          {invite.role} • Sent {invite.sentAt}
-                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-300 font-black uppercase tracking-widest">{invite.role} • Sent {invite.sentAt}</div>
                       </div>
                     </div>
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -788,13 +875,7 @@ const App: React.FC = () => {
                 ))
               )}
             </div>
-
-            <button 
-              onClick={() => setIsPendingInvitesModalOpen(false)} 
-              className="mt-8 w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-2xl font-black hover:bg-gray-200 transition-all uppercase tracking-widest text-xs"
-            >
-              Close Manifest
-            </button>
+            <button onClick={() => setIsPendingInvitesModalOpen(false)} className="mt-8 w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-2xl font-black hover:bg-gray-200 transition-all uppercase tracking-widest text-xs">Close Manifest</button>
           </div>
         </div>
       )}
@@ -804,61 +885,34 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[70] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800">
             <h3 className="text-2xl font-black dark:text-white tracking-tight mb-8">Edit Member Roster</h3>
-            
             <div className="space-y-6 mb-10">
               <div className="flex justify-center mb-4">
                 <div className="relative">
                   <div className={`w-24 h-24 rounded-[2rem] overflow-hidden flex items-center justify-center font-black text-3xl shadow-lg border-4 border-white dark:border-gray-800 ${memberToEdit.imageUrl ? '' : memberToEdit.color}`}>
                     {memberToEdit.imageUrl ? <img src={memberToEdit.imageUrl} className="w-full h-full object-cover" /> : memberToEdit.initial}
                   </div>
-                  <button 
-                    onClick={() => memberPhotoInputRef.current?.click()}
-                    className="absolute -bottom-2 -right-2 p-2 bg-indigo-600 text-white rounded-xl shadow-lg hover:scale-110 transition-transform"
-                  >
+                  <button onClick={() => memberPhotoInputRef.current?.click()} className="absolute -bottom-2 -right-2 p-2 bg-indigo-600 text-white rounded-xl shadow-lg hover:scale-110 transition-transform">
                     <Camera className="w-4 h-4" />
                   </button>
                   <input type="file" ref={memberPhotoInputRef} className="hidden" accept="image/*" onChange={handleMemberPhotoChange} />
                 </div>
               </div>
-
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest ml-1">Full Name</label>
-                <input 
-                  value={memberToEdit.name}
-                  onChange={(e) => setMemberToEdit({...memberToEdit, name: e.target.value})}
-                  className="w-full px-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                />
+                <input value={memberToEdit.name} onChange={(e) => setMemberToEdit({...memberToEdit, name: e.target.value})} className="w-full px-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
               </div>
-
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest ml-1">Operational Role</label>
-                <select 
-                  value={memberToEdit.role}
-                  onChange={(e) => setMemberToEdit({...memberToEdit, role: e.target.value as any})}
-                  className="w-full px-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                  disabled={memberToEdit.role === 'Owner'}
-                >
+                <select value={memberToEdit.role} onChange={(e) => setMemberToEdit({...memberToEdit, role: e.target.value as any})} className="w-full px-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" disabled={memberToEdit.role === 'Owner'}>
                   <option value="Owner">Owner</option>
                   <option value="Manager">Manager</option>
                   <option value="Staff">Staff</option>
                 </select>
               </div>
             </div>
-
             <div className="flex flex-col gap-3">
-              <button 
-                onClick={handleUpdateMember} 
-                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs"
-              >
-                <Save className="w-4 h-4" />
-                Commit Changes
-              </button>
-              <button 
-                onClick={() => setMemberToEdit(null)} 
-                className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-2xl font-black hover:bg-gray-200 transition-all uppercase tracking-widest text-xs"
-              >
-                Discard
-              </button>
+              <button onClick={handleUpdateMember} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs"><Save className="w-4 h-4" /> Commit Changes</button>
+              <button onClick={() => setMemberToEdit(null)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-2xl font-black hover:bg-gray-200 transition-all uppercase tracking-widest text-xs">Discard</button>
             </div>
           </div>
         </div>
@@ -885,7 +939,7 @@ const App: React.FC = () => {
 
       {/* Print Labels Modal */}
       {isPrintModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-gray-900 w-full max-w-5xl max-h-[90vh] rounded-[3rem] overflow-hidden shadow-2xl flex flex-col border border-gray-100 dark:border-gray-800 animate-in zoom-in-95 duration-300">
             <div className="p-8 border-b dark:border-gray-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
@@ -897,14 +951,10 @@ const App: React.FC = () => {
                   <p className="text-sm text-gray-500 dark:text-gray-300 font-medium uppercase tracking-widest">Asset Identification Hub</p>
                 </div>
               </div>
-              <button onClick={() => setIsPrintModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
-                <X className="w-6 h-6" />
-              </button>
+              <button onClick={() => setIsPrintModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"><X className="w-6 h-6" /></button>
             </div>
-
             <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                {/* Controls */}
                 <div className="space-y-8">
                   <div className="space-y-4">
                     <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Manifest Scope</h4>
@@ -914,7 +964,6 @@ const App: React.FC = () => {
                       ))}
                     </div>
                   </div>
-
                   <div className="space-y-4">
                     <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Identification Protocol</h4>
                     <div className="grid grid-cols-3 gap-2">
@@ -923,16 +972,14 @@ const App: React.FC = () => {
                       ))}
                     </div>
                   </div>
-
                   <div className="space-y-4">
                     <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Studio Template</h4>
                     <div className="grid grid-cols-3 gap-2">
                       {(['modern', 'industrial', 'compact'] as const).map((t) => (
-                        <button key={t} onClick={() => setPrintTemplate(t)} className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${printTemplate === t ? 'border-indigo-600 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-white' : 'border-gray-50 dark:border-gray-800 text-gray-400 dark:text-gray-500 hover:border-gray-200'}`}>{t}</button>
+                        <button key={t} onClick={() => setPrintTemplate(t)} className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${printTemplate === t ? 'border-indigo-600 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-white' : 'border-gray-50 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500 hover:border-gray-200'}`}>{t}</button>
                       ))}
                     </div>
                   </div>
-
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-4">
                       <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Dimensions</h4>
@@ -951,7 +998,6 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   </div>
-
                   <div className="space-y-4 pt-4 border-t dark:border-gray-800">
                     <div className="flex items-center justify-between">
                       <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Metadata Options</h4>
@@ -959,11 +1005,7 @@ const App: React.FC = () => {
                         <Palette className="w-3.5 h-3.5 text-gray-400 dark:text-white" />
                         <div className="flex gap-1.5">
                           {['bg-white', 'bg-yellow-50', 'bg-blue-50', 'bg-black'].map(c => (
-                            <button 
-                              key={c} 
-                              onClick={() => setPrintOptions({...printOptions, labelColor: c})}
-                              className={`w-5 h-5 rounded-full border border-gray-200 transition-all ${c} ${printOptions.labelColor === c ? 'scale-125 ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900' : 'hover:scale-110 shadow-sm'}`}
-                            />
+                            <button key={c} onClick={() => setPrintOptions({...printOptions, labelColor: c})} className={`w-5 h-5 rounded-full border border-gray-200 transition-all ${c} ${printOptions.labelColor === c ? 'scale-125 ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900' : 'hover:scale-110 shadow-sm'}`} />
                           ))}
                         </div>
                       </div>
@@ -972,15 +1014,9 @@ const App: React.FC = () => {
                       {Object.entries(printOptions).map(([key, value]) => {
                          if (typeof value !== 'boolean') return null;
                          return (
-                          <div 
-                            key={key} 
-                            onClick={() => setPrintOptions({...printOptions, [key]: !value})}
-                            className="flex items-center justify-between cursor-pointer group"
-                          >
+                          <div key={key} onClick={() => setPrintOptions({...printOptions, [key]: !value})} className="flex items-center justify-between cursor-pointer group">
                             <span className="text-xs font-bold text-gray-500 dark:text-white capitalize group-hover:text-indigo-500 transition-colors">{key.replace(/([A-Z])/g, ' $1')}</span>
-                            <div 
-                              className={`w-9 h-5 rounded-full transition-all flex items-center px-0.5 ${value ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`}
-                            >
+                            <div className={`w-9 h-5 rounded-full transition-all flex items-center px-0.5 ${value ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`}>
                               <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${value ? 'translate-x-4' : 'translate-x-0'}`} />
                             </div>
                           </div>
@@ -989,8 +1025,6 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 </div>
-
-                {/* Preview Area */}
                 <div className="flex flex-col gap-6">
                   <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em] px-1">Studio Visual Context</h4>
                   <LabelPreview />
@@ -1006,25 +1040,14 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-
             <div className="p-8 border-t dark:border-gray-800 flex gap-4 shrink-0 bg-gray-50/50 dark:bg-gray-900/50">
               <button onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-4 bg-white dark:bg-gray-800 text-gray-600 dark:text-white rounded-2xl font-black uppercase tracking-widest text-[10px] border border-gray-100 dark:border-gray-700 transition-all hover:bg-gray-100 dark:hover:bg-gray-700">Abeyance</button>
-              <button 
-                onClick={() => {
-                  alert(`Executing print for ${printCopies} copies...`);
-                  setIsPrintModalOpen(false);
-                }} 
-                className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
-              >
-                <Printer className="w-4 h-4" />
-                Commit to Output
-              </button>
+              <button onClick={() => { alert(`Executing print for ${printCopies} copies...`); setIsPrintModalOpen(false); }} className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"><Printer className="w-4 h-4" /> Commit to Output</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Navigation Bar - Responsive centering */}
       {!isScanning && (
         <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none p-4 flex justify-center">
           <nav className="w-full max-w-2xl bg-white dark:bg-gray-900/90 backdrop-blur-xl border border-gray-100 dark:border-gray-800 px-8 py-4 flex justify-between items-center shadow-2xl rounded-[2.5rem] pointer-events-auto">
@@ -1032,24 +1055,15 @@ const App: React.FC = () => {
               <LayoutDashboard className="w-6 h-6" />
               <span className="text-[10px] font-black tracking-widest uppercase">Home</span>
             </button>
-            
             <button onClick={() => setCurrentView(View.INVENTORY)} className={`flex flex-col items-center gap-1.5 transition-all ${currentView === View.INVENTORY ? 'text-indigo-600 dark:text-indigo-400 scale-110' : 'text-gray-400 dark:text-gray-300 hover:text-white'}`}>
               <Package className="w-6 h-6" />
               <span className="text-[10px] font-black tracking-widest uppercase">Stock</span>
             </button>
-
-            <button 
-              onClick={() => { setIsScanning(true); setEditingProduct(undefined); }}
-              className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-[1.5rem] shadow-2xl shadow-indigo-400/40 dark:shadow-none -mt-14 border-4 border-gray-50 dark:border-gray-950 active:scale-95 transition-all hover:bg-indigo-700 z-50"
-            >
-              <Scan className="w-8 h-8" />
-            </button>
-
+            <button onClick={() => { setIsScanning(true); setEditingProduct(undefined); }} className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-[1.5rem] shadow-2xl shadow-indigo-400/40 dark:shadow-none -mt-14 border-4 border-gray-50 dark:border-gray-950 active:scale-95 transition-all hover:bg-indigo-700 z-50"><Scan className="w-8 h-8" /></button>
             <button onClick={() => setCurrentView(View.TEAMS)} className={`flex flex-col items-center gap-1.5 transition-all ${currentView === View.TEAMS ? 'text-indigo-600 dark:text-indigo-400 scale-110' : 'text-gray-400 dark:text-gray-300 hover:text-white'}`}>
               <Users className="w-6 h-6" />
               <span className="text-[10px] font-black tracking-widest uppercase">Team</span>
             </button>
-
             <button onClick={() => setCurrentView(View.SETTINGS)} className={`flex flex-col items-center gap-1.5 transition-all ${currentView === View.SETTINGS ? 'text-indigo-600 dark:text-indigo-400 scale-110' : 'text-gray-400 dark:text-gray-300 hover:text-white'}`}>
               <Settings className="w-6 h-6" />
               <span className="text-[10px] font-black tracking-widest uppercase">Ops</span>

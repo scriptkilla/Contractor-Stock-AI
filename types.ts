@@ -5,6 +5,7 @@ export interface Product {
   name: string;
   description: string;
   category: string;
+  locations?: string[]; // Changed from single location string to array
   quantity: number;
   price: number;
   imageUrl?: string;

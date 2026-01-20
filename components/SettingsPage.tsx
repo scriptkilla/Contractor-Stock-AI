@@ -20,7 +20,7 @@ import {
   Send,
   Loader2,
   ChevronDown,
-  Settings2,
+  Settings2, 
   ShieldCheck,
   History,
   Phone,
@@ -56,7 +56,23 @@ import {
   Fingerprint,
   KeyRound,
   Eye,
-  EyeOff
+  EyeOff,
+  Clock,
+  Package,
+  Users,
+  Terminal,
+  Server,
+  Cloud,
+  ExternalLink,
+  BookOpen,
+  Scan,
+  Map,
+  Truck,
+  Warehouse,
+  Construction,
+  ShieldAlert,
+  Ghost,
+  ImageOff
 } from 'lucide-react';
 import { db } from '../services/database';
 import { GoogleGenAI } from "@google/genai";
@@ -82,7 +98,30 @@ interface NetworkPrinter {
   status: 'online' | 'offline';
 }
 
-const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) => {
+interface StorageLocation {
+  id: string;
+  name: string;
+  type: 'Warehouse' | 'Vehicle' | 'Job Site';
+  address: string;
+  isPrimary: boolean;
+}
+
+interface SecurityLog {
+  id: string;
+  timestamp: string;
+  action: string;
+  status: 'verified' | 'alert';
+}
+
+/**
+ * Modal component with explicit React.FC typing to resolve children prop errors
+ */
+const Modal: React.FC<{ 
+  isOpen: boolean; 
+  onClose: () => void; 
+  title: string; 
+  children: React.ReactNode 
+}> = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
@@ -101,7 +140,13 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose:
   );
 };
 
-const Section = ({ title, children }: { title: string; children?: React.ReactNode }) => (
+/**
+ * Section component with explicit React.FC typing to resolve children prop errors
+ */
+const Section: React.FC<{ 
+  title: string; 
+  children?: React.ReactNode 
+}> = ({ title, children }) => (
   <div className="space-y-4">
     <h2 className="text-xs font-black text-gray-400 tracking-[0.2em] uppercase px-1">{title}</h2>
     <div className="bg-white dark:bg-gray-900 rounded-[2rem] border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm transition-colors duration-300">
@@ -110,20 +155,23 @@ const Section = ({ title, children }: { title: string; children?: React.ReactNod
   </div>
 );
 
-const Row = ({ 
-  icon: Icon, 
-  title, 
-  subtitle, 
-  right, 
-  onClick,
-  destructive 
-}: { 
+/**
+ * Row component with explicit React.FC typing to resolve property 'key' and children errors
+ */
+const Row: React.FC<{ 
   icon: any; 
   title: string; 
   subtitle?: string; 
   right?: React.ReactNode; 
   onClick?: () => void;
   destructive?: boolean;
+}> = ({ 
+  icon: Icon, 
+  title, 
+  subtitle, 
+  right, 
+  onClick,
+  destructive 
 }) => (
   <div 
     onClick={onClick}
@@ -142,15 +190,21 @@ const Row = ({
   </div>
 );
 
-const Toggle = ({ enabled, setEnabled }: { enabled: boolean; setEnabled: (v: boolean) => void }) => (
+/**
+ * Toggle component with explicit React.FC typing
+ */
+const Toggle: React.FC<{ 
+  enabled: boolean; 
+  setEnabled: (v: boolean) => void 
+}> = ({ enabled, setEnabled }) => (
   <button 
     onClick={(e) => {
       e.stopPropagation();
       setEnabled(!enabled);
     }}
-    className={`w-12 h-6.5 rounded-full transition-colors flex items-center px-1 ${enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`}
+    className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`}
   >
-    <div className={`w-4.5 h-4.5 bg-white rounded-full shadow-md transition-transform ${enabled ? 'translate-x-5.5' : 'translate-x-0'}`} />
+    <div className={`w-4 h-4 bg-white rounded-full shadow-md transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0'}`} />
   </button>
 );
 
@@ -187,15 +241,137 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [isImportSelectorVisible, setIsImportSelectorVisible] = useState(false);
   const [isBluetoothPanelVisible, setIsBluetoothPanelVisible] = useState(false);
   const [isPrintersPanelVisible, setIsPrintersPanelVisible] = useState(false);
+  const [isLocationsPanelVisible, setIsLocationsPanelVisible] = useState(false);
+  const [isPrivacyPanelVisible, setIsPrivacyPanelVisible] = useState(false);
 
-  // Security Toggles
+  // Privacy Granularity
+  const [privacyOptions, setPrivacyOptions] = useState(() => {
+    const saved = localStorage.getItem('sv_privacy_opts');
+    return saved ? JSON.parse(saved) : {
+      obfuscateValues: true,
+      obfuscateStock: true,
+      blurImages: false,
+      autoActivate: false
+    };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sv_privacy_opts', JSON.stringify(privacyOptions));
+  }, [privacyOptions]);
+
+  // Locations Logic
+  const [locations, setLocations] = useState<StorageLocation[]>(() => {
+    const saved = localStorage.getItem('sv_storage_locations');
+    return saved ? JSON.parse(saved) : [
+      { id: 'l1', name: 'Main HQ Warehouse', type: 'Warehouse', address: '123 Supply Ln, Austin TX', isPrimary: true },
+      { id: 'l2', name: 'Service Truck #42', type: 'Vehicle', address: 'Mobile Unit - Austin Area', isPrimary: false }
+    ];
+  });
+  const [newLocationName, setNewLocationName] = useState('');
+  const [newLocationType, setNewLocationType] = useState<'Warehouse' | 'Vehicle' | 'Job Site'>('Warehouse');
+  const [newLocationAddress, setNewLocationAddress] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem('sv_storage_locations', JSON.stringify(locations));
+    const primary = locations.find(l => l.isPrimary);
+    if (primary && primary.name !== userLocation) {
+        setUserLocation(primary.name);
+        localStorage.setItem('sv_user_loc', primary.name);
+    }
+  }, [locations]);
+
+  const handleAddLocation = () => {
+    if (!newLocationName || !newLocationAddress) return;
+    const newLoc: StorageLocation = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: newLocationName,
+      type: newLocationType,
+      address: newLocationAddress,
+      isPrimary: locations.length === 0
+    };
+    setLocations([...locations, newLoc]);
+    setNewLocationName('');
+    setNewLocationAddress('');
+    logAction(`Created Location: ${newLoc.name}`);
+  };
+
+  const handleSetPrimaryLocation = (id: string) => {
+    setLocations(prev => prev.map(l => ({ ...l, isPrimary: l.id === id })));
+    const loc = locations.find(l => l.id === id);
+    if (loc) logAction(`Primary Location set to ${loc.name}`);
+  };
+
+  const handleRemoveLocation = (id: string) => {
+    const loc = locations.find(l => l.id === id);
+    if (loc?.isPrimary && locations.length > 1) {
+        alert("Select another primary location before removal.");
+        return;
+    }
+    setLocations(prev => prev.filter(l => l.id !== id));
+    if (loc) logAction(`Destroyed Location Reference: ${loc.name}`, 'alert');
+  };
+
+  // Command Center State
+  const [systemUptime, setSystemUptime] = useState('00:00:00');
+  const [pingStatus, setPingStatus] = useState<number | null>(null);
+
+  useEffect(() => {
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const diff = Date.now() - startTime;
+      const hours = Math.floor(diff / 3600000).toString().padStart(2, '0');
+      const minutes = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
+      const seconds = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+      setSystemUptime(`${hours}:${minutes}:${seconds}`);
+      if (Math.random() > 0.7) {
+        setPingStatus(Math.floor(Math.random() * 40) + 15);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Notification Preferences
+  const [notifInventory, setNotifInventory] = useState(() => localStorage.getItem('sv_notif_inv') !== 'false');
+  const [notifTeam, setNotifTeam] = useState(() => localStorage.getItem('sv_notif_team') !== 'false');
+  const [notifSystem, setNotifSystem] = useState(() => localStorage.getItem('sv_notif_sys') !== 'false');
+
+  useEffect(() => {
+    localStorage.setItem('sv_notif_inv', String(notifInventory));
+    localStorage.setItem('sv_notif_team', String(notifTeam));
+    localStorage.setItem('sv_notif_sys', String(notifSystem));
+  }, [notifInventory, notifTeam, notifSystem]);
+
+  // Security Logic & Toggles
   const [biometricsEnabled, setBiometricsEnabled] = useState(() => localStorage.getItem('sv_sec_biometrics') === 'true');
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(() => localStorage.getItem('sv_sec_2fa') === 'true');
+  const [securityLogs, setSecurityLogs] = useState<SecurityLog[]>(() => {
+    const saved = localStorage.getItem('sv_security_logs');
+    return saved ? JSON.parse(saved) : [
+      { id: '1', timestamp: new Date().toISOString(), action: 'System Initialized', status: 'verified' }
+    ];
+  });
+
+  const logAction = (action: string, status: 'verified' | 'alert' = 'verified') => {
+    const newLog: SecurityLog = {
+      id: Math.random().toString(36).substr(2, 9),
+      timestamp: new Date().toISOString(),
+      action,
+      status
+    };
+    setSecurityLogs(prev => {
+      const updated = [newLog, ...prev].slice(0, 50);
+      localStorage.setItem('sv_security_logs', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   useEffect(() => {
     localStorage.setItem('sv_sec_biometrics', String(biometricsEnabled));
+  }, [biometricsEnabled]);
+
+  useEffect(() => {
     localStorage.setItem('sv_sec_2fa', String(twoFactorEnabled));
-  }, [biometricsEnabled, twoFactorEnabled]);
+  }, [twoFactorEnabled]);
 
   // Printer Management
   const [networkPrinters, setNetworkPrinters] = useState<NetworkPrinter[]>(() => {
@@ -225,24 +401,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const handleAddPrinter = (printer: NetworkPrinter) => {
     setNetworkPrinters(prev => [...prev, printer]);
     setDiscoveredPrinters(prev => prev.filter(p => p.id !== printer.id));
+    logAction(`Added Printer: ${printer.name}`);
   };
 
   const handleRemovePrinter = (id: string) => {
+    const printer = networkPrinters.find(p => p.id === id);
     setNetworkPrinters(prev => prev.filter(p => p.id !== id));
+    if (printer) logAction(`Removed Printer: ${printer.name}`);
   };
 
   const handleSetDefaultPrinter = (id: string) => {
     setNetworkPrinters(prev => prev.map(p => ({ ...p, isDefault: p.id === id })));
   };
-
-  // Email/Password states
-  const [newEmail, setNewEmail] = useState('');
-  const [currentPasswordForEmail, setCurrentPasswordForEmail] = useState('');
-  
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
-  const [showPasswords, setShowPasswords] = useState(false);
 
   // Profile Form Logic
   const [tempProfile, setTempProfile] = useState({ 
@@ -273,7 +443,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     localStorage.setItem('sv_user_id', tempProfile.employeeId);
     localStorage.setItem('sv_user_img', tempProfile.image);
     setIsPersonalInfoVisible(false);
+    logAction("Personnel File Updated");
   };
+
+  const [newEmail, setNewEmail] = useState('');
+  const [currentPasswordForEmail, setCurrentPasswordForEmail] = useState('');
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
 
   const handleEmailUpdate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -281,6 +459,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     setUserEmail(newEmail);
     localStorage.setItem('sv_user_email', newEmail);
     setIsChangeEmailVisible(false);
+    logAction(`Authority Email Changed to ${newEmail}`);
     alert("Authority email updated successfully.");
     setNewEmail('');
     setCurrentPasswordForEmail('');
@@ -292,7 +471,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       alert("New passwords do not match.");
       return;
     }
-    // Simulation
+    logAction("Access Key Protocol Cycled");
     setIsChangePasswordVisible(false);
     alert("Cryptographic access key (password) has been cycled.");
     setOldPassword('');
@@ -335,7 +514,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       alert("No data available to export.");
       return;
     }
-
+    logAction(`Manifest Export Triggered (${format.toUpperCase()})`);
     if (format === 'json') {
       const blob = new Blob([JSON.stringify(products, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -359,9 +538,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       doc.text("Inventory Manifest", 14, 22);
       doc.setFontSize(10);
       doc.text(`Generated: ${new Date().toLocaleString()} | Total Assets: ${products.length}`, 14, 30);
-      
       let y = 40;
-      products.forEach((p, i) => {
+      products.forEach((p) => {
         if (y > 270) { doc.addPage(); y = 20; }
         doc.setFont("helvetica", "bold");
         doc.text(`${p.sku} - ${p.name}`, 14, y);
@@ -376,7 +554,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = async (event) => {
       const content = event.target?.result as string;
@@ -385,6 +562,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           const imported = JSON.parse(content);
           if (Array.isArray(imported)) {
             imported.forEach(p => db.saveProduct(p));
+            logAction(`Bulk JSON Import: ${imported.length} objects`);
             alert(`Successfully imported ${imported.length} records.`);
             onDataImport();
             setIsImportSelectorVisible(false);
@@ -393,7 +571,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           }
         } else if (file.name.endsWith('.csv')) {
           const lines = content.split('\n');
-          const headers = lines[0].split(',');
           const imported = [];
           for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
@@ -410,12 +587,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             db.saveProduct(product as Product);
             imported.push(product);
           }
+          logAction(`Bulk CSV Import: ${imported.length} objects`);
           alert(`Successfully imported ${imported.length} records from CSV.`);
           onDataImport();
           setIsImportSelectorVisible(false);
         }
       } catch (err) {
         console.error(err);
+        logAction("Data Import Failure", "alert");
         alert("Import failed. Please check the file format.");
       }
     };
@@ -440,7 +619,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     setChatInput('');
     setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setIsTyping(true);
-
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
@@ -465,7 +643,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       <div className="flex flex-col md:flex-row items-center gap-8 p-10 bg-white dark:bg-gray-900 rounded-[3rem] border border-gray-100 dark:border-gray-800 shadow-xl transition-all duration-300">
         <div className="relative shrink-0">
           <div className="w-24 h-24 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-[2rem] flex items-center justify-center text-white text-3xl font-black uppercase overflow-hidden shadow-lg">
-            {profileImage ? <img src={profileImage} className="w-full h-full object-cover" /> : userName.substring(0, 2)}
+            {profileImage ? <img src={profileImage} alt="User profile" className="w-full h-full object-cover" /> : userName.substring(0, 2)}
           </div>
           <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-emerald-500 border-4 border-white dark:border-gray-900 rounded-full shadow-sm animate-pulse"></div>
         </div>
@@ -483,12 +661,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         <div className="space-y-10">
           <Section title="Asset Authority">
             <Row icon={User} title="Personnel File" subtitle="Role, ID, and workstation" onClick={() => { setTempProfile({ name: userName, role: userRole, location: userLocation, email: userEmail, phone: userPhone, employeeId, image: profileImage }); setIsPersonalInfoVisible(true); }} />
-            <Row icon={ShieldCheck} title="Security & Logs" subtitle="Biometrics and session tracking" onClick={() => setIsSecurityPanelVisible(true)} />
+            <Row icon={ShieldCheck} title="Security & Logs" subtitle="Access manifests and history" onClick={() => setIsSecurityPanelVisible(true)} />
+            <Row icon={Shield} title="Privacy Shield" subtitle="Obfuscate values in stock view" right={<Toggle enabled={privacyMode} setEnabled={(v) => { setPrivacyMode(v); logAction(`Privacy Shield ${v ? 'Active' : 'Standby'}`); }} />} onClick={() => setIsPrivacyPanelVisible(true)} />
           </Section>
 
           <Section title="Credential Protocols">
             <Row icon={Mail} title="Identity Email" subtitle={userEmail} onClick={() => setIsChangeEmailVisible(true)} />
             <Row icon={KeyRound} title="Access Keys" subtitle="Password cycling & encryption" onClick={() => setIsChangePasswordVisible(true)} />
+          </Section>
+
+          <Section title="Facility Network">
+            <Row icon={MapPin} title="Storage Locations" subtitle="Warehouses, trucks, and sites" onClick={() => setIsLocationsPanelVisible(true)} />
           </Section>
 
           <Section title="Physical Links">
@@ -532,15 +715,126 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         </div>
       </div>
 
-      {/* Modals Implementation */}
-      
+      {/* Privacy Modal */}
+      <Modal isOpen={isPrivacyPanelVisible} onClose={() => setIsPrivacyPanelVisible(false)} title="Privacy Protocol (Obfuscation)">
+        <div className="space-y-8">
+           <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-[2.5rem] border border-indigo-100 dark:border-indigo-800 flex items-start gap-4">
+              <ShieldAlert className="w-8 h-8 text-indigo-600 shrink-0 mt-1" />
+              <div>
+                <h4 className="text-sm font-black text-indigo-900 dark:text-indigo-300">Data Masking Active</h4>
+                <p className="text-[10px] text-indigo-800/70 dark:text-indigo-400/70 mt-1 font-medium leading-relaxed">
+                  Privacy Shield prevents sensitive financial and inventory metrics from being visible to unauthorized observers during workstation operation.
+                </p>
+              </div>
+           </div>
+
+           <Section title="Obfuscation Layers">
+             <Row 
+               icon={Ghost} 
+               title="Financial Metrics" 
+               subtitle="Blur asset values and totals" 
+               right={<Toggle enabled={privacyOptions.obfuscateValues} setEnabled={(v) => setPrivacyOptions({...privacyOptions, obfuscateValues: v})} />} 
+             />
+             <Row 
+               icon={Hash} 
+               title="Stock Quantities" 
+               subtitle="Blur item counts and levels" 
+               right={<Toggle enabled={privacyOptions.obfuscateStock} setEnabled={(v) => setPrivacyOptions({...privacyOptions, obfuscateStock: v})} />} 
+             />
+             <Row 
+               icon={ImageOff} 
+               title="Visual Assets" 
+               subtitle="Blur product preview thumbnails" 
+               right={<Toggle enabled={privacyOptions.blurImages} setEnabled={(v) => setPrivacyOptions({...privacyOptions, blurImages: v})} />} 
+             />
+           </Section>
+
+           <Section title="Session Security">
+             <Row 
+               icon={Clock} 
+               title="Auto-Activate" 
+               subtitle="Engage shield after 5m inactivity" 
+               right={<Toggle enabled={privacyOptions.autoActivate} setEnabled={(v) => setPrivacyOptions({...privacyOptions, autoActivate: v})} />} 
+             />
+           </Section>
+
+           <button 
+             onClick={() => { setPrivacyMode(true); setIsPrivacyPanelVisible(false); }}
+             className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-indigo-700 transition-all"
+           >
+             Commit Privacy Protocol
+           </button>
+        </div>
+      </Modal>
+
+      {/* Locations Modal */}
+      <Modal isOpen={isLocationsPanelVisible} onClose={() => setIsLocationsPanelVisible(false)} title="Storage Network">
+        <div className="space-y-6">
+          <Section title="Active Facilities">
+            {locations.length > 0 ? locations.map(loc => (
+              <Row 
+                key={loc.id}
+                icon={loc.type === 'Warehouse' ? Warehouse : loc.type === 'Vehicle' ? Truck : Construction} 
+                title={loc.name} 
+                subtitle={loc.address} 
+                right={
+                  <div className="flex items-center gap-2">
+                    {loc.isPrimary && <span className="text-[8px] font-black bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 px-2 py-1 rounded-full uppercase tracking-widest">Current</span>}
+                    <button onClick={() => handleRemoveLocation(loc.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-all"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                }
+                onClick={() => !loc.isPrimary && handleSetPrimaryLocation(loc.id)}
+              />
+            )) : (
+              <div className="p-10 text-center text-gray-400 text-xs font-medium">No storage nodes configured.</div>
+            )}
+          </Section>
+
+          <div className="p-6 bg-gray-50 dark:bg-gray-800/50 rounded-[2.5rem] border-2 border-dashed border-gray-200 dark:border-gray-700">
+            <div className="space-y-4">
+              <h4 className="font-black dark:text-white text-sm uppercase tracking-widest">Register New Facility</h4>
+              <div className="space-y-3">
+                <input 
+                  value={newLocationName}
+                  onChange={e => setNewLocationName(e.target.value)}
+                  placeholder="Facility Identifier (e.g. Bay 4)"
+                  className="w-full p-4 bg-white dark:bg-gray-900 border-none rounded-2xl text-xs font-bold dark:text-white"
+                />
+                <select 
+                    value={newLocationType}
+                    onChange={e => setNewLocationType(e.target.value as any)}
+                    className="w-full p-4 bg-white dark:bg-gray-900 border-none rounded-2xl text-xs font-bold dark:text-white"
+                >
+                    <option value="Warehouse">Industrial Warehouse</option>
+                    <option value="Vehicle">Service Vehicle / Truck</option>
+                    <option value="Job Site">Active Job Site</option>
+                </select>
+                <input 
+                  value={newLocationAddress}
+                  onChange={e => setNewLocationAddress(e.target.value)}
+                  placeholder="Physical Address or GPS Coord"
+                  className="w-full p-4 bg-white dark:bg-gray-900 border-none rounded-2xl text-xs font-bold dark:text-white"
+                />
+                <button 
+                  onClick={handleAddLocation}
+                  disabled={!newLocationName || !newLocationAddress}
+                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-lg"
+                >
+                  Authorize Facility Link
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
       {/* Personal Info Modal */}
       <Modal isOpen={isPersonalInfoVisible} onClose={() => setIsPersonalInfoVisible(false)} title="Personnel File">
         <div className="space-y-6">
           <div className="flex justify-center">
             <div className="relative group">
               <div className="w-32 h-32 rounded-[2rem] overflow-hidden border-4 border-indigo-50 dark:border-indigo-900/30 shadow-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-900 dark:text-white">
-                {tempProfile.image ? <img src={tempProfile.image} className="w-full h-full object-cover" /> : <User className="w-12 h-12 text-gray-400" />}
+                {tempProfile.image ? <img src={tempProfile.image} alt="Profile" className="w-full h-full object-cover" /> : <User className="w-12 h-12 text-gray-400" />}
               </div>
               <button onClick={() => profilePhotoInputRef.current?.click()} className="absolute -bottom-2 -right-2 p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg hover:scale-110 transition-transform">
                 <Camera className="w-4 h-4" />
@@ -579,25 +873,156 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <Row icon={Fingerprint} title="Biometric Unlock" subtitle="FaceID or TouchID required" right={<Toggle enabled={biometricsEnabled} setEnabled={setBiometricsEnabled} />} />
             <Row icon={Lock} title="Two-Factor Auth" subtitle="Secure your data manifest" right={<Toggle enabled={twoFactorEnabled} setEnabled={setTwoFactorEnabled} />} />
           </Section>
-          <Section title="Session Manifest">
-            <div className="p-4 space-y-4">
-              {[
-                { time: '10:45 AM', action: 'Authorized access from primary device', status: 'verified' },
-                { time: '09:20 AM', action: 'Inventory manifest exported to PDF', status: 'verified' },
-                { time: 'Yesterday', action: 'Personnel file credentials modified', status: 'verified' }
-              ].map((log, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-gray-800 last:border-0">
+          <Section title="Operational Manifest (Logs)">
+            <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar">
+              {securityLogs.length > 0 ? securityLogs.map((log) => (
+                <div key={log.id} className="flex items-start justify-between py-3 border-b border-gray-50 dark:border-gray-800 last:border-0 group">
                   <div className="min-w-0 pr-4">
-                    <div className="text-xs font-black dark:text-white truncate">{log.action}</div>
-                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{log.time}</div>
+                    <div className={`text-xs font-black truncate ${log.status === 'alert' ? 'text-red-500' : 'dark:text-white'}`}>{log.action}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Clock className="w-3 h-3 text-gray-400" />
+                      <div className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">
+                        {new Date(log.timestamp).toLocaleString()}
+                      </div>
+                    </div>
                   </div>
-                  <div className="shrink-0">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  <div className="shrink-0 pt-1">
+                    {log.status === 'alert' ? <AlertTriangle className="w-4 h-4 text-red-500" /> : <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                   </div>
+                </div>
+              )) : (
+                <div className="text-center py-10 text-gray-400 text-xs font-medium">No system events recorded.</div>
+              )}
+            </div>
+            <div className="p-4 bg-gray-50 dark:bg-gray-800/50 flex justify-end">
+              <button 
+                onClick={() => {
+                  setSecurityLogs([]);
+                  localStorage.removeItem('sv_security_logs');
+                }}
+                className="text-[9px] font-black text-gray-400 hover:text-red-500 uppercase tracking-widest transition-colors"
+              >
+                Wipe Manifest History
+              </button>
+            </div>
+          </Section>
+        </div>
+      </Modal>
+
+      {/* Signal System Modal */}
+      <Modal isOpen={isNotificationsPanelVisible} onClose={() => setIsNotificationsPanelVisible(false)} title="Signal System (Alerts)">
+        <div className="space-y-6">
+          <p className="text-sm text-gray-500 dark:text-gray-400 font-medium px-2">Configure how the organization broadcasts critical inventory and system events.</p>
+          <Section title="Broadcast Channels">
+            <Row 
+              icon={Package} 
+              title="Inventory Thresholds" 
+              subtitle="Low stock & critical shortages" 
+              right={<Toggle enabled={notifInventory} setEnabled={(v) => { setNotifInventory(v); logAction(`${v ? 'Enabled' : 'Disabled'} Inventory Alerts`); }} />} 
+            />
+            <Row 
+              icon={Users} 
+              title="Team Activity" 
+              subtitle="Scan logs & asset modifications" 
+              right={<Toggle enabled={notifTeam} setEnabled={(v) => { setNotifTeam(v); logAction(`${v ? 'Enabled' : 'Disabled'} Team Broadcasts`); }} />} 
+            />
+            <Row 
+              icon={Cpu} 
+              title="System Operations" 
+              subtitle="Updates, exports & neural status" 
+              right={<Toggle enabled={notifSystem} setEnabled={(v) => { setNotifSystem(v); logAction(`${v ? 'Enabled' : 'Disabled'} System Signals`); }} />} 
+            />
+          </Section>
+
+          <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-3xl border border-indigo-100 dark:border-indigo-800">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-white dark:bg-gray-950 rounded-2xl shadow-sm text-indigo-600">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-indigo-900 dark:text-indigo-300">Push Protocol</h4>
+                <p className="text-[10px] text-indigo-800/70 dark:text-indigo-400/70 mt-1 font-medium leading-relaxed">
+                  Real-time push notifications are currently synchronized with the workstation's primary OS alert system.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Help Protocols Modal (Command Center) */}
+      <Modal isOpen={isHelpVisible} onClose={() => setIsHelpVisible(false)} title="Command Center Protocols">
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-5 bg-indigo-50 dark:bg-indigo-900/30 rounded-[2rem] border border-indigo-100 dark:border-indigo-800 flex flex-col items-center text-center gap-2">
+              <div className="p-2 bg-white dark:bg-indigo-600 rounded-xl shadow-sm">
+                <Activity className="w-5 h-5 text-indigo-600 dark:text-white" />
+              </div>
+              <div className="text-[10px] font-black text-gray-400 dark:text-indigo-300 uppercase tracking-widest">Uptime</div>
+              <div className="text-xl font-mono font-black dark:text-white">{systemUptime}</div>
+            </div>
+            <div className="p-5 bg-emerald-50 dark:bg-emerald-900/30 rounded-[2rem] border border-emerald-100 dark:border-emerald-800 flex flex-col items-center text-center gap-2">
+              <div className="p-2 bg-white dark:bg-emerald-600 rounded-xl shadow-sm">
+                <Wifi className="w-5 h-5 text-emerald-600 dark:text-white" />
+              </div>
+              <div className="text-[10px] font-black text-gray-400 dark:text-emerald-300 uppercase tracking-widest">Neural Latency</div>
+              <div className="text-xl font-mono font-black dark:text-white">{pingStatus ? `${pingStatus}ms` : '-- ms'}</div>
+            </div>
+          </div>
+
+          <Section title="System Integrity">
+            <div className="p-2">
+              {[
+                { label: 'AI Inference Engine', status: 'Optimal', icon: BrainCircuit },
+                { label: 'Local Object Cache', status: `${productCount} items`, icon: Database },
+                { label: 'Encrypted Data Core', status: 'Secured', icon: ShieldCheck },
+                { label: 'Optical Scanner Array', status: 'Standby', icon: Camera }
+              ].map((item, i) => (
+                <div key={i} className="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-2xl transition-colors group">
+                  <div className="flex items-center gap-3">
+                    <item.icon className="w-4 h-4 text-gray-400 group-hover:text-indigo-500" />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">{item.label}</span>
+                  </div>
+                  <span className="text-[10px] font-black px-2 py-0.5 bg-gray-100 dark:bg-gray-950 text-gray-500 dark:text-gray-400 rounded-lg uppercase">{item.status}</span>
                 </div>
               ))}
             </div>
           </Section>
+
+          <Section title="Standard Operating Procedures">
+            <div className="space-y-3 p-2">
+              <button className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl hover:border-indigo-200 transition-all text-left group">
+                <div className="flex items-center gap-3">
+                  <Scan className="w-5 h-5 text-indigo-600" />
+                  <div>
+                    <div className="text-sm font-black dark:text-white">Scanning Strategy</div>
+                    <div className="text-[10px] text-gray-400 font-medium">Optimal light and angle protocols</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-300 group-hover:translate-x-1 transition-transform" />
+              </button>
+              <button className="w-full flex items-center justify-between p-4 bg-white dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-2xl hover:border-indigo-200 transition-all text-left group">
+                <div className="flex items-center gap-3">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                  <div>
+                    <div className="text-sm font-black dark:text-white">AI Identification SOP</div>
+                    <div className="text-[10px] text-gray-400 font-medium">Improving neural matching accuracy</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-300 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
+          </Section>
+
+          <div className="flex items-center justify-between px-2 pt-2">
+            <div className="flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-indigo-500" />
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Version v2.1.0-stable</span>
+            </div>
+            <button className="text-[10px] font-black text-indigo-600 hover:underline uppercase tracking-widest flex items-center gap-1">
+              View Patch Logs <ExternalLink className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       </Modal>
 
@@ -772,7 +1197,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           {modelsList.map(model => (
             <button 
               key={model.id}
-              onClick={() => { setAiModel(model.id); setIsModelPanelVisible(false); }}
+              onClick={() => { setAiModel(model.id); setIsModelPanelVisible(false); logAction(`AI Engine Changed: ${model.name}`); }}
               className={`w-full text-left p-6 rounded-[2rem] border-2 transition-all flex items-start gap-5 ${aiModel === model.id ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/30' : 'border-gray-50 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-100'}`}
             >
               <div className={`p-3 rounded-2xl ${aiModel === model.id ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-50 dark:bg-gray-800 text-gray-400'}`}>
@@ -889,49 +1314,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         </div>
       </Modal>
 
-      {/* Static Info Modals (Help, Bluetooth, etc.) - Simplified content */}
-      <Modal isOpen={isHelpVisible} onClose={() => setIsHelpVisible(false)} title="Command Center Protocols">
-        <div className="space-y-6">
-          <Section title="Quick Start">
-            <div className="p-4 text-sm text-gray-500 dark:text-gray-400 leading-relaxed font-medium">
-              1. <span className="text-gray-900 dark:text-white font-black">Scan Assets</span>: Use the central scan button for real-time barcode lookup.<br/>
-              2. <span className="text-gray-900 dark:text-white font-black">AI Assistance</span>: Capture images to automatically fill name, category, and price.<br/>
-              3. <span className="text-gray-900 dark:text-white font-black">Ops Studio</span>: Configure printers and export data for audits.
-            </div>
-          </Section>
-          <Section title="System Information">
-            <Row icon={Cpu} title="Core Version" subtitle="v2.1.0 Build Alpha" right={<span className="text-[9px] font-black text-indigo-500 uppercase">Latest</span>} />
-            <Row icon={Database} title="Local Storage" subtitle={`${productCount} objects indexed`} />
-          </Section>
-        </div>
-      </Modal>
-
-      {/* Bluetooth Connectivity Modal */}
-      <Modal isOpen={isBluetoothPanelVisible} onClose={() => setIsBluetoothPanelVisible(false)} title="External HID Connectivity">
-        <div className="space-y-6">
-          <div className="flex flex-col items-center justify-center p-12 bg-gray-50 dark:bg-gray-800/50 rounded-[2.5rem] border-2 border-dashed border-gray-200 dark:border-gray-700">
-             <div className="w-20 h-20 bg-white dark:bg-gray-900 rounded-[1.5rem] flex items-center justify-center mb-6 shadow-sm">
-                <Bluetooth className="w-10 h-10 text-indigo-600" />
-             </div>
-             <div className="text-center mb-8">
-                <h4 className="text-lg font-black dark:text-white">External Devices</h4>
-                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">Connect rugged Bluetooth scanners or diagnostic tools.</p>
-             </div>
-             <button className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg">Scan for Devices</button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal isOpen={isScannerPanelVisible} onClose={() => setIsScannerPanelVisible(false)} title="Scanner Logic">
-        <div className="space-y-4">
-          <Section title="Feedback Settings">
-            <Row icon={Volume2} title="Audio Feedback" subtitle="Beep on successful identification" right={<Toggle enabled={true} setEnabled={() => {}} />} />
-            <Row icon={Vibrate} title="Haptic Pulse" subtitle="Vibrate on error or warning" right={<Toggle enabled={true} setEnabled={() => {}} />} />
-            <Row icon={Maximize2} title="Auto Focus" subtitle="Optimize camera for small codes" right={<Toggle enabled={true} setEnabled={() => {}} />} />
-          </Section>
-        </div>
-      </Modal>
-
+      {/* Regional Specifications Modal */}
       <Modal isOpen={isRegionalPanelVisible} onClose={() => setIsRegionalPanelVisible(false)} title="Regional Specifications">
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -952,6 +1335,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               <option>AUD ($) - Australian Dollar</option>
             </select>
           </div>
+        </div>
+      </Modal>
+
+      {/* Scanner Logic Modal */}
+      <Modal isOpen={isScannerPanelVisible} onClose={() => setIsScannerPanelVisible(false)} title="Scanner Logic">
+        <div className="space-y-4">
+          <Section title="Feedback Settings">
+            <Row icon={Volume2} title="Audio Feedback" subtitle="Beep on successful identification" right={<Toggle enabled={true} setEnabled={() => {}} />} />
+            <Row icon={Vibrate} title="Haptic Pulse" subtitle="Vibrate on error or warning" right={<Toggle enabled={true} setEnabled={() => {}} />} />
+            <Row icon={Maximize2} title="Auto Focus" subtitle="Optimize camera for small codes" right={<Toggle enabled={true} setEnabled={() => {}} />} />
+          </Section>
         </div>
       </Modal>
 

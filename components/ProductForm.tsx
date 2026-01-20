@@ -2,8 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Product } from '../types';
 import { analyzeProductImage } from '../services/geminiService';
-// Added RefreshCw to the imports from lucide-react
-import { Sparkles, Camera, Save, Loader2, Check, AlertCircle, Wand2, RefreshCw } from 'lucide-react';
+import { Sparkles, Camera, Save, Loader2, Check, Wand2, RefreshCw, MapPin, CheckSquare, Square } from 'lucide-react';
 
 interface ProductFormProps {
   initialSku?: string;
@@ -12,16 +11,25 @@ interface ProductFormProps {
   onCancel: () => void;
 }
 
+interface StorageLocation {
+  id: string;
+  name: string;
+  type: string;
+  isPrimary: boolean;
+}
+
 const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProduct, onSave, onCancel }) => {
   const [formData, setFormData] = useState<Partial<Product>>({
     sku: initialSku,
     name: '',
     description: '',
     category: '',
+    locations: [],
     quantity: 1,
     price: 0,
   });
 
+  const [availableLocations, setAvailableLocations] = useState<StorageLocation[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showAiSuccess, setShowAiSuccess] = useState(false);
   const [highlightedFields, setHighlightedFields] = useState<Set<string>>(new Set());
@@ -29,24 +37,54 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
   const [autoAnalyzeEnabled] = useState(() => localStorage.getItem('sv_ai_auto') !== 'false');
 
   useEffect(() => {
+    const savedLocations = localStorage.getItem('sv_storage_locations');
+    if (savedLocations) {
+      const parsed = JSON.parse(savedLocations);
+      setAvailableLocations(parsed);
+      
+      if (!initialProduct && (!formData.locations || formData.locations.length === 0)) {
+        const primary = parsed.find((l: StorageLocation) => l.isPrimary);
+        if (primary) {
+          setFormData(prev => ({ ...prev, locations: [primary.name] }));
+        }
+      }
+    }
+    
     if (initialProduct) {
-      setFormData(initialProduct);
+      // Handle potential legacy data where location might have been a string
+      const legacyLocation = (initialProduct as any).location;
+      const initialLocations = Array.isArray(initialProduct.locations) 
+        ? initialProduct.locations 
+        : legacyLocation ? [legacyLocation] : [];
+        
+      setFormData({
+        ...initialProduct,
+        locations: initialLocations
+      });
+      
       if (initialProduct.imageUrl) {
         setPreviewImage(initialProduct.imageUrl);
       }
     }
   }, [initialProduct]);
 
+  const toggleLocation = (locName: string) => {
+    setFormData(prev => {
+      const current = prev.locations || [];
+      if (current.includes(locName)) {
+        return { ...prev, locations: current.filter(l => l !== locName) };
+      } else {
+        return { ...prev, locations: [...current, locName] };
+      }
+    });
+  };
+
   const handleAiAssist = useCallback(async (imageToAnalyze?: string) => {
     const targetImage = imageToAnalyze || previewImage;
-    if (!targetImage) {
-      return;
-    }
+    if (!targetImage) return;
 
     setIsAnalyzing(true);
     setShowAiSuccess(false);
-    
-    // Clear previous highlights
     setHighlightedFields(new Set());
 
     const result = await analyzeProductImage(targetImage);
@@ -61,7 +99,6 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
         price: result.estimatedPrice || prev.price
       }));
       
-      // Visual feedback orchestration
       const fields = ['name', 'category', 'description', 'price'];
       if (!initialProduct && result.sku) fields.push('sku');
       
@@ -69,7 +106,6 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
       setHighlightedFields(newHighlights);
       setShowAiSuccess(true);
       
-      // Elegant exit for highlights
       setTimeout(() => setHighlightedFields(new Set()), 4000);
     }
     setIsAnalyzing(false);
@@ -83,8 +119,6 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
     reader.onloadend = () => {
       const base64String = reader.result as string;
       setPreviewImage(base64String);
-      
-      // Auto-trigger AI if enabled and this is a new product
       if (autoAnalyzeEnabled && !initialProduct) {
         handleAiAssist(base64String);
       }
@@ -100,6 +134,7 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
       name: formData.name!,
       description: formData.description || '',
       category: formData.category || 'General',
+      locations: formData.locations && formData.locations.length > 0 ? formData.locations : ['Unassigned'],
       quantity: Number(formData.quantity) || 0,
       price: Number(formData.price) || 0,
       imageUrl: previewImage || undefined,
@@ -116,44 +151,8 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
       : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800'}
   `;
 
-  // Helper to render a pseudo-barcode SVG based on SKU string
-  const renderBarcode = (sku: string) => {
-    if (!sku) return null;
-    const bars = [];
-    let currentX = 0;
-    // We generate bars based on character codes to make each barcode unique to the SKU
-    for (let i = 0; i < sku.length; i++) {
-      const code = sku.charCodeAt(i);
-      const w1 = (code % 3) + 1;
-      const g = (code % 2) + 1;
-      const w2 = ((code >> 2) % 3) + 1;
-      
-      bars.push(<rect key={`${i}-1`} x={currentX} y="0" width={w1} height="40" fill="currentColor" />);
-      currentX += w1 + g;
-      bars.push(<rect key={`${i}-2`} x={currentX} y="0" width={w2} height="40" fill="currentColor" />);
-      currentX += w2 + g;
-    }
-    
-    return (
-      <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-500">
-        <div className="flex flex-col items-center bg-gray-50 dark:bg-gray-950 p-3 rounded-xl border border-gray-100 dark:border-gray-800 shadow-inner">
-          <svg 
-            width="100%" 
-            height="24" 
-            viewBox={`0 0 ${currentX} 40`} 
-            preserveAspectRatio="none" 
-            className="text-gray-900 dark:text-gray-100 opacity-80"
-          >
-            {bars}
-          </svg>
-          <span className="text-[8px] font-mono text-gray-400 mt-1.5 tracking-[0.3em] font-bold uppercase">{sku}</span>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl p-8 max-w-2xl mx-auto border border-gray-100 dark:border-gray-800 transition-colors duration-300">
+    <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] shadow-2xl p-8 max-w-2xl mx-auto border border-gray-100 dark:border-gray-800 transition-colors duration-300 overflow-hidden">
       <div className="flex justify-between items-start mb-8">
         <div className="space-y-1">
           <h2 className="text-3xl font-black tracking-tight text-gray-900 dark:text-white">
@@ -183,15 +182,9 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
           `}
         >
           {isAnalyzing ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Thinking...</span>
-            </>
+            <><Loader2 className="w-4 h-4 animate-spin" /><span>Thinking...</span></>
           ) : (
-            <>
-              <Wand2 className={`w-4 h-4 transition-transform ${previewImage ? 'group-hover:rotate-12' : ''}`} />
-              AI Intelligence
-            </>
+            <><Wand2 className={`w-4 h-4 transition-transform ${previewImage ? 'group-hover:rotate-12' : ''}`} />AI Intelligence</>
           )}
         </button>
       </div>
@@ -201,33 +194,25 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
           <div className="space-y-5">
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Asset Reference (SKU)</label>
-              <div className="relative">
-                <input
-                  required
-                  className={inputClasses('sku')}
-                  value={formData.sku}
-                  onChange={e => setFormData({ ...formData, sku: e.target.value })}
-                  readOnly={!!initialProduct}
-                  placeholder={isAnalyzing ? "Scanning ID..." : "0000000000"}
-                />
-                {!initialProduct && isAnalyzing && <Sparkles className="w-4 h-4 text-indigo-400 absolute right-4 top-1/2 -translate-y-1/2 animate-pulse" />}
-              </div>
-              {/* Visual Barcode Display */}
-              {formData.sku && renderBarcode(formData.sku)}
+              <input
+                required
+                className={inputClasses('sku')}
+                value={formData.sku}
+                onChange={e => setFormData({ ...formData, sku: e.target.value })}
+                readOnly={!!initialProduct}
+                placeholder={isAnalyzing ? "Scanning ID..." : "0000000000"}
+              />
             </div>
             
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Product Designation</label>
-              <div className="relative">
-                <input
-                  required
-                  className={inputClasses('name')}
-                  value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  placeholder={isAnalyzing ? "AI is identifying..." : "Official name..."}
-                />
-                {isAnalyzing && <Sparkles className="w-4 h-4 text-indigo-400 absolute right-4 top-1/2 -translate-y-1/2 animate-pulse" />}
-              </div>
+              <input
+                required
+                className={inputClasses('name')}
+                value={formData.name}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                placeholder={isAnalyzing ? "AI is identifying..." : "Official name..."}
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -245,40 +230,21 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
             <div className={`
               h-full min-h-[220px] rounded-3xl border-2 border-dashed transition-all duration-500 overflow-hidden flex flex-col items-center justify-center p-4
               ${previewImage ? 'border-transparent' : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 hover:bg-gray-100 dark:hover:bg-gray-900'}
-              ${isAnalyzing ? 'ring-4 ring-indigo-500/20' : ''}
             `}>
               {previewImage ? (
-                <>
-                  <img 
-                    src={previewImage} 
-                    alt="Preview" 
-                    className={`w-full h-full object-cover absolute inset-0 transition-all duration-1000 ${isAnalyzing ? 'scale-110 blur-sm brightness-75 grayscale-[0.5]' : 'group-hover:scale-105'}`} 
-                  />
-                  {isAnalyzing && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-indigo-950/40 backdrop-blur-[2px] animate-in fade-in duration-500">
-                      <div className="relative mb-3">
-                         <div className="absolute inset-0 bg-indigo-400 blur-xl opacity-30 animate-pulse" />
-                         <Loader2 className="w-10 h-10 text-white animate-spin relative" />
-                      </div>
-                      <span className="text-white text-[10px] font-black uppercase tracking-[0.2em]">Neural Processing</span>
-                      <div className="absolute inset-0 pointer-events-none">
-                        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-400 to-transparent shadow-[0_0_20px_rgba(129,140,248,0.8)] animate-[smartScan_2.5s_ease-in-out_infinite]" />
-                      </div>
-                    </div>
-                  )}
-                </>
+                <img 
+                  src={previewImage} 
+                  alt="Preview" 
+                  className={`w-full h-full object-cover absolute inset-0 transition-all duration-1000 ${isAnalyzing ? 'scale-110 blur-sm' : 'group-hover:scale-105'}`} 
+                />
               ) : (
                 <div className="text-center space-y-3">
-                  <div className="w-16 h-16 bg-white dark:bg-gray-900 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
-                    <Camera className="w-8 h-8 text-gray-400 dark:text-gray-600" />
+                  <div className="w-12 h-12 bg-white dark:bg-gray-900 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+                    <Camera className="w-6 h-6 text-gray-400 dark:text-gray-600" />
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200">Capture Visual</p>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">Image required for AI Assist</p>
-                  </div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">Capture Visual</p>
                 </div>
               )}
-              
               <input
                 type="file"
                 accept="image/*"
@@ -287,83 +253,94 @@ const ProductForm: React.FC<ProductFormProps> = ({ initialSku = '', initialProdu
                 onChange={handleImageUpload}
                 disabled={isAnalyzing}
               />
-              
-              {previewImage && !isAnalyzing && (
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 z-10">
-                  <div className="flex items-center gap-2 text-white font-bold text-sm bg-white/10 px-4 py-2 rounded-full border border-white/20">
-                    <RefreshCw className="w-4 h-4" />
-                    Replace Photo
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
 
+        {/* Multi-Location Facility Network Assignment */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Facility Network Links</label>
+            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter">{(formData.locations || []).length} Nodes Connected</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 max-h-[160px] overflow-y-auto p-1 custom-scrollbar">
+            {availableLocations.length > 0 ? (
+              availableLocations.map(loc => {
+                const isSelected = (formData.locations || []).includes(loc.name);
+                return (
+                  <button
+                    key={loc.id}
+                    type="button"
+                    onClick={() => toggleLocation(loc.name)}
+                    className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                      isSelected 
+                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' 
+                        : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-indigo-200'
+                    }`}
+                  >
+                    {isSelected ? <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" /> : <Square className="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0" />}
+                    <div className="min-w-0">
+                      <div className={`text-xs font-black truncate ${isSelected ? 'text-indigo-900 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {loc.name}
+                      </div>
+                      <div className="text-[8px] font-bold text-gray-400 truncate uppercase tracking-tighter">{loc.type}</div>
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="col-span-2 p-6 text-center bg-gray-50 dark:bg-gray-800 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
+                <MapPin className="w-6 h-6 text-gray-300 mx-auto mb-2" />
+                <p className="text-[10px] font-bold text-gray-400 uppercase">No storage nodes configured in settings.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Detailed Log / Description</label>
+          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Technical Intelligence Log</label>
           <textarea
-            rows={4}
+            rows={2}
             className={inputClasses('description')}
             value={formData.description}
             onChange={e => setFormData({ ...formData, description: e.target.value })}
-            placeholder="Key specs, damage reports, or technical details..."
+            placeholder="Key specs, maintenance notes..."
           />
         </div>
 
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Current Stock</label>
-            <div className="relative">
-               <input
-                type="number"
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                value={formData.quantity}
-                onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
-              />
-            </div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Aggregate Stock</label>
+            <input
+              type="number"
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:text-white"
+              value={formData.quantity}
+              onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
+            />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Asset Value ($)</label>
-            <div className="relative">
-              <input
-                type="number"
-                step="0.01"
-                className={inputClasses('price')}
-                value={formData.price}
-                onChange={e => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Unit Asset Value ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              className={inputClasses('price')}
+              value={formData.price}
+              onChange={e => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+            />
           </div>
         </div>
 
-        <div className="flex gap-4 pt-6">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 px-6 py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl hover:bg-gray-200 dark:hover:bg-gray-700 font-bold transition-all disabled:opacity-50"
-            disabled={isAnalyzing}
-          >
-            Discard
-          </button>
-          <button
-            type="submit"
-            disabled={isAnalyzing}
-            className="flex-[1.5] flex items-center justify-center gap-3 px-6 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-black shadow-xl shadow-indigo-200 dark:shadow-none transition-all disabled:opacity-50 active:scale-95"
-          >
-            <Save className="w-5 h-5" />
-            {initialProduct ? 'Update Inventory' : 'Finalize Asset'}
+        <div className="flex gap-4 pt-4">
+          <button type="button" onClick={onCancel} className="flex-1 px-6 py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-2xl hover:bg-gray-200 font-bold transition-all">Discard</button>
+          <button type="submit" disabled={isAnalyzing} className="flex-[1.5] flex items-center justify-center gap-3 px-6 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 font-black shadow-xl transition-all disabled:opacity-50">
+            <Save className="w-5 h-5" />{initialProduct ? 'Update Manifest' : 'Finalize Asset'}
           </button>
         </div>
       </form>
-      
       <style>{`
-        @keyframes smartScan {
-          0% { top: 0%; opacity: 0; }
-          10% { opacity: 1; }
-          90% { opacity: 1; }
-          100% { top: 100%; opacity: 0; }
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; }
       `}</style>
     </div>
   );
