@@ -5,7 +5,7 @@ export interface Product {
   name: string;
   description: string;
   category: string;
-  locations?: string[];
+  locations?: string[]; // Changed from single location string to array
   quantity: number;
   price: number;
   imageUrl?: string;
@@ -18,7 +18,6 @@ export type ScanResult = {
 };
 
 export enum View {
-  AUTH = 'auth',
   DASHBOARD = 'dashboard',
   SCAN = 'scan',
   INVENTORY = 'inventory',
