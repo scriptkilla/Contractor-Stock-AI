@@ -5,6 +5,7 @@ import { db } from './services/database';
 import Scanner from './components/Scanner';
 import ProductForm from './components/ProductForm';
 import SettingsPage from './components/SettingsPage';
+import LoginPage from './components/LoginPage';
 import { 
   Scan, 
   Package, 
@@ -75,6 +76,7 @@ interface PendingInvite {
 }
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('sv_auth') === 'true');
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [products, setProducts] = useState<Product[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -106,19 +108,27 @@ const App: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  // Teams State
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
-    { 
-      id: '1', 
-      name: 'Sarah Wilson', 
-      email: 'sarah@contractorstock.ai', 
-      role: 'Owner', 
-      status: 'online', 
-      lastActive: 'Now', 
-      initial: 'SW', 
-      color: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-white' 
-    }
-  ]);
+  // Teams State - Initialized from auth data
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => {
+    const savedName = localStorage.getItem('sv_user_name') || 'Sarah Wilson';
+    const savedEmail = localStorage.getItem('sv_user_email') || 'sarah@contractorstock.ai';
+    const initials = savedName.split(' ').map(n => n[0]).join('').toUpperCase();
+    
+    return [
+      { 
+        id: '1', 
+        name: savedName, 
+        email: savedEmail, 
+        role: 'Owner', 
+        status: 'online', 
+        lastActive: 'Now', 
+        initial: initials, 
+        color: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-white',
+        imageUrl: localStorage.getItem('sv_user_img') || undefined
+      }
+    ];
+  });
+
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<TeamMember | null>(null);
   const [memberToEdit, setMemberToEdit] = useState<TeamMember | null>(null);
@@ -146,6 +156,31 @@ const App: React.FC = () => {
   });
 
   const memberPhotoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleProfileUpdateInTeam = (name: string, email: string) => {
+    setTeamMembers(prev => prev.map(member => {
+      if (member.role === 'Owner') {
+        const initials = name.split(' ').map((n: string) => n[0]).join('').toUpperCase();
+        return { ...member, name, email, initial: initials };
+      }
+      return member;
+    }));
+  };
+
+  const handleLogin = (userData: { name: string; email: string; role: string }) => {
+    setIsAuthenticated(true);
+    localStorage.setItem('sv_auth', 'true');
+    localStorage.setItem('sv_user_email', userData.email);
+    localStorage.setItem('sv_user_name', userData.name);
+    handleProfileUpdateInTeam(userData.name, userData.email);
+    setCurrentView(View.DASHBOARD);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('sv_auth');
+    setCurrentView(View.DASHBOARD);
+  };
 
   // Fix: Added missing LabelPreview component to resolve the "Cannot find name 'LabelPreview'" error
   const LabelPreview = () => {
@@ -394,7 +429,7 @@ const App: React.FC = () => {
           className="flex items-center gap-4 p-5 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-amber-300 transition-all group"
         >
           <div className="p-3 bg-amber-50 dark:bg-amber-900/30 rounded-xl group-hover:bg-amber-100 transition-colors">
-            <Printer className="w-6 h-6 text-amber-600 dark:text-white" />
+            <Printer className="w-6 h-6 text-amber-600 text-white" />
           </div>
           <div className="text-left flex-1">
             <h3 className="font-bold text-gray-800 dark:text-white">Print Labels</h3>
@@ -634,6 +669,8 @@ const App: React.FC = () => {
     </div>
   );
 
+  if (!isAuthenticated) return <LoginPage onLogin={handleLogin} />;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-white transition-colors duration-300 flex flex-col">
       <div className="flex-1 w-full px-4 pt-8 pb-32">
@@ -656,6 +693,7 @@ const App: React.FC = () => {
           <SettingsPage 
             onClearData={handleClearDatabase} 
             onDataImport={handleDataImport}
+            onProfileUpdate={handleProfileUpdateInTeam}
             productCount={products.length}
             theme={theme}
             setTheme={setTheme}
