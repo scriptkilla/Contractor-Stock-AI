@@ -5,7 +5,7 @@ import { db } from './services/database';
 import Scanner from './components/Scanner';
 import ProductForm from './components/ProductForm';
 import SettingsPage from './components/SettingsPage';
-import LoginPage from './components/LoginPage'; // New Import
+import LoginPage from './components/LoginPage';
 import { 
   Scan, 
   Package, 
@@ -109,19 +109,27 @@ const App: React.FC = () => {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  // Teams State
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
-    { 
-      id: '1', 
-      name: 'Sarah Wilson', 
-      email: 'sarah@contractorstock.ai', 
-      role: 'Owner', 
-      status: 'online', 
-      lastActive: 'Now', 
-      initial: 'SW', 
-      color: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-white' 
-    }
-  ]);
+  // Teams State - Initialized with localStorage data if available
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => {
+    const savedName = localStorage.getItem('sv_user_name') || 'Sarah Wilson';
+    const savedEmail = localStorage.getItem('sv_user_email') || 'sarah@contractorstock.ai';
+    const initials = savedName.split(' ').map(n => n[0]).join('').toUpperCase();
+    
+    return [
+      { 
+        id: '1', 
+        name: savedName, 
+        email: savedEmail, 
+        role: 'Owner', 
+        status: 'online', 
+        lastActive: 'Now', 
+        initial: initials, 
+        color: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-white',
+        imageUrl: localStorage.getItem('sv_user_img') || undefined
+      }
+    ];
+  });
+
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<TeamMember | null>(null);
   const [memberToEdit, setMemberToEdit] = useState<TeamMember | null>(null);
@@ -154,6 +162,22 @@ const App: React.FC = () => {
     setIsAuthenticated(true);
     localStorage.setItem('sv_auth', 'true');
     localStorage.setItem('sv_user_email', userData.email);
+    localStorage.setItem('sv_user_name', userData.name);
+    
+    // Update team members to reflect the person who just signed in
+    setTeamMembers(prev => prev.map(member => {
+      if (member.role === 'Owner') {
+        const initials = userData.name.split(' ').map((n: string) => n[0]).join('').toUpperCase();
+        return { 
+          ...member, 
+          name: userData.name, 
+          email: userData.email,
+          initial: initials 
+        };
+      }
+      return member;
+    }));
+
     setCurrentView(View.DASHBOARD);
   };
 
@@ -410,7 +434,7 @@ const App: React.FC = () => {
           className="flex items-center gap-4 p-5 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-amber-300 transition-all group"
         >
           <div className="p-3 bg-amber-50 dark:bg-amber-900/30 rounded-xl group-hover:bg-amber-100 transition-colors">
-            <Printer className="w-6 h-6 text-amber-600 dark:text-white" />
+            <Printer className="w-6 h-6 text-amber-600 text-white" />
           </div>
           <div className="text-left flex-1">
             <h3 className="font-bold text-gray-800 dark:text-white">Print Labels</h3>
@@ -963,7 +987,7 @@ const App: React.FC = () => {
           <div className="bg-white dark:bg-gray-900 w-full max-w-5xl max-h-[90vh] rounded-[3rem] overflow-hidden shadow-2xl flex flex-col border border-gray-100 dark:border-gray-800 animate-in zoom-in-95 duration-300">
             <div className="p-8 border-b dark:border-gray-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-white rounded-xl">
+                <div className="p-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 text-white rounded-xl">
                   <Printer className="w-6 h-6" />
                 </div>
                 <div>
