@@ -6,6 +6,7 @@ import Scanner from './components/Scanner';
 import ProductForm from './components/ProductForm';
 import SettingsPage from './components/SettingsPage';
 import LoginPage from './components/LoginPage';
+import { jsPDF } from 'jspdf';
 import { 
   Scan, 
   Package, 
@@ -53,7 +54,8 @@ import {
   ShieldAlert,
   ExternalLink,
   Info,
-  Layers
+  Layers,
+  Filter
 } from 'lucide-react';
 
 interface TeamMember {
@@ -87,6 +89,25 @@ const App: React.FC = () => {
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [selectedProductForView, setSelectedProductForView] = useState<Product | null>(null);
 
+  // Print Modal State
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printSelection, setPrintSelection] = useState<'all' | 'recent' | 'custom'>('all');
+  const [printFormat, setPrintFormat] = useState<'qr' | 'barcode' | 'tag'>('qr');
+  const [printTemplate, setPrintTemplate] = useState<'modern' | 'industrial' | 'compact'>('modern');
+  const [printSize, setPrintSelectionSize] = useState<'sm' | 'md' | 'lg'>('md');
+  const [printCopies, setPrintCopies] = useState(1);
+  const [selectedPrintIds, setSelectedPrintIds] = useState<Record<string, number>>({});
+  const [printOptions, setPrintOptions] = useState({
+    showName: true,
+    showPrice: false,
+    showSku: true,
+    showDate: false,
+    showBarcode: true,
+    highContrast: true,
+    labelColor: 'bg-white',
+    securityMark: false
+  });
+
   // Load Granular Privacy Options
   const [privacyOptions, setPrivacyOptions] = useState(() => {
     const saved = localStorage.getItem('sv_privacy_opts');
@@ -97,6 +118,108 @@ const App: React.FC = () => {
       autoActivate: false
     };
   });
+
+  useEffect(() => {
+    setProducts(db.getProducts());
+  }, []);
+
+  // Sync print selection based on scope
+  useEffect(() => {
+    if (printSelection === 'all') {
+      const all: Record<string, number> = {};
+      products.forEach(p => all[p.id] = 1);
+      setSelectedPrintIds(all);
+    } else if (printSelection === 'recent') {
+      const recent: Record<string, number> = {};
+      products.slice(-5).forEach(p => recent[p.id] = 1);
+      setSelectedPrintIds(recent);
+    }
+  }, [printSelection, products]);
+
+  const togglePrintItem = (id: string) => {
+    setSelectedPrintIds(prev => {
+      const next = { ...prev };
+      if (next[id]) delete next[id];
+      else next[id] = 1;
+      return next;
+    });
+  };
+
+  const updatePrintQuantity = (id: string, delta: number) => {
+    setSelectedPrintIds(prev => {
+      const current = prev[id] || 0;
+      const nextVal = Math.max(1, current + delta);
+      return { ...prev, [id]: nextVal };
+    });
+  };
+
+  const generateLabelPDF = () => {
+    const doc = new jsPDF({
+      orientation: 'p',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const itemsToPrint = products.filter(p => selectedPrintIds[p.id]);
+    if (itemsToPrint.length === 0) {
+      alert("No assets selected for output.");
+      return;
+    }
+
+    let yPos = 20;
+    const margin = 20;
+    const labelHeight = 40;
+    const labelWidth = 170;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("INVENTORY ASSET MANIFEST", margin, 15);
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(`Generated: ${new Date().toLocaleString()} • ContractorStock AI v1.0`, margin, 20);
+    yPos = 30;
+
+    itemsToPrint.forEach((product, index) => {
+      const copies = selectedPrintIds[product.id] || 1;
+      
+      for (let c = 0; c < copies; c++) {
+        if (yPos + labelHeight > 280) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        // Draw Label Border
+        doc.setDrawColor(230);
+        doc.rect(margin, yPos, labelWidth, labelHeight);
+        
+        // Asset Info
+        doc.setTextColor(0);
+        doc.setFontSize(12);
+        doc.text(product.name.toUpperCase(), margin + 5, yPos + 10);
+        
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.text(`SKU: ${product.sku}`, margin + 5, yPos + 18);
+        doc.text(`CAT: ${product.category}`, margin + 5, yPos + 24);
+        
+        if (printOptions.showPrice) {
+          doc.setFont("helvetica", "bold");
+          doc.text(`MSRP: $${product.price.toFixed(2)}`, margin + 5, yPos + 30);
+        }
+
+        // Placeholder for QR (jsPDF doesn't native-render QR, typically we'd use a canvas/img)
+        doc.setDrawColor(0);
+        doc.rect(margin + labelWidth - 35, yPos + 5, 30, 30);
+        doc.setFontSize(6);
+        doc.text("SCAN FOR TELEMETRY", margin + labelWidth - 35, yPos + 38);
+
+        yPos += labelHeight + 5;
+      }
+    });
+
+    doc.save(`Asset_Labels_${new Date().getTime()}.pdf`);
+    setIsPrintModalOpen(false);
+  };
 
   // Re-sync privacy options whenever settings might have changed
   useEffect(() => {
@@ -137,24 +260,6 @@ const App: React.FC = () => {
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [isPendingInvitesModalOpen, setIsPendingInvitesModalOpen] = useState(false);
 
-  // Print Modal State
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [printSelection, setPrintSelection] = useState<'all' | 'recent' | 'custom'>('all');
-  const [printFormat, setPrintFormat] = useState<'qr' | 'barcode' | 'tag'>('qr');
-  const [printTemplate, setPrintTemplate] = useState<'modern' | 'industrial' | 'compact'>('modern');
-  const [printSize, setPrintSelectionSize] = useState<'sm' | 'md' | 'lg'>('md');
-  const [printCopies, setPrintCopies] = useState(1);
-  const [printOptions, setPrintOptions] = useState({
-    showName: true,
-    showPrice: false,
-    showSku: true,
-    showDate: false,
-    showBarcode: true,
-    highContrast: true,
-    labelColor: 'bg-white',
-    securityMark: false
-  });
-
   const memberPhotoInputRef = useRef<HTMLInputElement>(null);
 
   const handleProfileUpdateInTeam = (name: string, email: string) => {
@@ -176,13 +281,6 @@ const App: React.FC = () => {
     setCurrentView(View.DASHBOARD);
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('sv_auth');
-    setCurrentView(View.DASHBOARD);
-  };
-
-  // Fix: Added missing LabelPreview component to resolve the "Cannot find name 'LabelPreview'" error
   const LabelPreview = () => {
     return (
       <div className={`aspect-[4/3] w-full max-w-[300px] mx-auto ${printOptions.labelColor} border-2 border-gray-200 dark:border-gray-700 rounded-2xl shadow-inner flex flex-col items-center justify-center p-6 relative overflow-hidden transition-all duration-500`}>
@@ -231,14 +329,6 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    setProducts(db.getProducts());
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('sv_privacy_mode', String(privacyMode));
-  }, [privacyMode]);
-
-  useEffect(() => {
     const root = window.document.documentElement;
     const applyTheme = (t: string) => {
       if (t === 'dark') {
@@ -254,7 +344,6 @@ const App: React.FC = () => {
     localStorage.setItem('scanventory_theme', theme);
     applyTheme(theme);
 
-    // Watch for system theme changes
     if (theme === 'system') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const listener = () => applyTheme('system');
@@ -813,6 +902,10 @@ const App: React.FC = () => {
                </button>
                <button 
                 onClick={() => {
+                  const preselect: Record<string, number> = {};
+                  preselect[selectedProductForView!.id] = 1;
+                  setSelectedPrintIds(preselect);
+                  setPrintSelection('custom');
                   setSelectedProductForView(null);
                   setIsPrintModalOpen(true);
                 }}
@@ -862,7 +955,7 @@ const App: React.FC = () => {
                 <label className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest ml-1">Email Address</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="teammate@company.com" className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                  <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="teammate@company.com" className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-gray-300 dark:placeholder:text-gray-600" />
                 </div>
               </div>
               <div className="space-y-2">
@@ -885,109 +978,10 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Pending Invites Modal */}
-      {isPendingInvitesModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[70] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-lg rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 flex flex-col max-h-[80vh]">
-            <div className="flex items-center justify-between mb-8 shrink-0">
-              <div className="flex items-center gap-3">
-                <Clock className="w-6 h-6 text-amber-500" />
-                <h3 className="text-2xl font-black dark:text-white tracking-tight">Pending Invites</h3>
-              </div>
-              <button onClick={() => setIsPendingInvitesModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-              {pendingInvites.length === 0 ? (
-                <div className="text-center py-20 bg-gray-50 dark:bg-gray-800/50 rounded-[2.5rem] border-2 border-dashed border-gray-200 dark:border-gray-700">
-                  <Mail className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-sm font-bold text-gray-400 dark:text-gray-200">No active pending invitations.</p>
-                </div>
-              ) : (
-                pendingInvites.map((invite) => (
-                  <div key={invite.id} className="p-5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center justify-between group">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 text-amber-600 rounded-xl flex items-center justify-center">
-                        <Mail className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <div className="font-bold dark:text-white truncate max-w-[150px]">{invite.email}</div>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-300 font-black uppercase tracking-widest">{invite.role} • Sent {invite.sentAt}</div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleResendInvite(invite.email)} className="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-white rounded-lg" title="Resend"><RefreshCcw className="w-4 h-4" /></button>
-                      <button onClick={() => handleCancelInvite(invite.id)} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-white rounded-lg" title="Revoke"><Ban className="w-4 h-4" /></button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            <button onClick={() => setIsPendingInvitesModalOpen(false)} className="mt-8 w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-2xl font-black hover:bg-gray-200 transition-all uppercase tracking-widest text-xs">Close Manifest</button>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Member Modal */}
-      {memberToEdit && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[70] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-md rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800">
-            <h3 className="text-2xl font-black dark:text-white tracking-tight mb-8">Edit Member Roster</h3>
-            <div className="space-y-6 mb-10">
-              <div className="flex justify-center mb-4">
-                <div className="relative">
-                  <div className={`w-24 h-24 rounded-[2rem] overflow-hidden flex items-center justify-center font-black text-3xl shadow-lg border-4 border-white dark:border-gray-800 ${memberToEdit.imageUrl ? '' : memberToEdit.color}`}>
-                    {memberToEdit.imageUrl ? <img src={memberToEdit.imageUrl} className="w-full h-full object-cover" /> : memberToEdit.initial}
-                  </div>
-                  <button onClick={() => memberPhotoInputRef.current?.click()} className="absolute -bottom-2 -right-2 p-2 bg-indigo-600 text-white rounded-xl shadow-lg hover:scale-110 transition-transform">
-                    <Camera className="w-4 h-4" />
-                  </button>
-                  <input type="file" ref={memberPhotoInputRef} className="hidden" accept="image/*" onChange={handleMemberPhotoChange} />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest ml-1">Full Name</label>
-                <input value={memberToEdit.name} onChange={(e) => setMemberToEdit({...memberToEdit, name: e.target.value})} className="w-full px-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-widest ml-1">Operational Role</label>
-                <select value={memberToEdit.role} onChange={(e) => setMemberToEdit({...memberToEdit, role: e.target.value as any})} className="w-full px-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" disabled={memberToEdit.role === 'Owner'}>
-                  <option value="Owner">Owner</option>
-                  <option value="Manager">Manager</option>
-                  <option value="Staff">Staff</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex flex-col gap-3">
-              <button onClick={handleUpdateMember} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs"><Save className="w-4 h-4" /> Commit Changes</button>
-              <button onClick={() => setMemberToEdit(null)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-2xl font-black hover:bg-gray-200 transition-all uppercase tracking-widest text-xs">Discard</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Remove Member Confirmation */}
-      {memberToDelete && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[70] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-sm rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 duration-300 border border-gray-100 dark:border-gray-800 text-center">
-            <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-white rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <UserMinus className="w-10 h-10" />
-            </div>
-            <h3 className="text-xl font-black dark:text-white tracking-tight mb-2">Revoke Access?</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-200 font-medium mb-8">
-              Remove <span className="font-bold text-gray-900 dark:text-white">{memberToDelete.name}</span> from the organization roster?
-            </p>
-            <div className="flex flex-col gap-3">
-              <button onClick={handleRemoveMember} className="w-full py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-red-200 dark:shadow-none">Revoke Access</button>
-              <button onClick={() => setMemberToDelete(null)} className="w-full py-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white rounded-2xl font-black uppercase tracking-widest text-xs">Maintain</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Print Labels Modal */}
       {isPrintModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-gray-900 w-full max-w-5xl max-h-[90vh] rounded-[3rem] overflow-hidden shadow-2xl flex flex-col border border-gray-100 dark:border-gray-800 animate-in zoom-in-95 duration-300">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-6xl max-h-[90vh] rounded-[3rem] overflow-hidden shadow-2xl flex flex-col border border-gray-100 dark:border-gray-800 animate-in zoom-in-95 duration-300">
             <div className="p-8 border-b dark:border-gray-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-white rounded-xl">
@@ -1001,86 +995,107 @@ const App: React.FC = () => {
               <button onClick={() => setIsPrintModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"><X className="w-6 h-6" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                <div className="space-y-8">
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Manifest Scope</h4>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['all', 'recent', 'custom'] as const).map((s) => (
-                        <button key={s} onClick={() => setPrintSelection(s)} className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${printSelection === s ? 'border-indigo-600 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-white' : 'border-gray-50 dark:border-gray-800 text-gray-400 dark:text-gray-500 hover:border-gray-200'}`}>{s}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Identification Protocol</h4>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['qr', 'barcode', 'tag'] as const).map((f) => (
-                        <button key={f} onClick={() => setPrintFormat(f)} className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${printFormat === f ? 'border-amber-600 bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-white' : 'border-gray-50 dark:border-gray-800 text-gray-400 dark:text-gray-500 hover:border-gray-200'}`}>{f}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Studio Template</h4>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['modern', 'industrial', 'compact'] as const).map((t) => (
-                        <button key={t} onClick={() => setPrintTemplate(t)} className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${printTemplate === t ? 'border-indigo-600 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-white' : 'border-gray-50 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500 hover:border-gray-200'}`}>{t}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                <div className="space-y-8 lg:col-span-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-4">
-                      <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Dimensions</h4>
-                      <div className="flex bg-gray-50 dark:bg-gray-800 p-1 rounded-xl">
-                        {(['sm', 'md', 'lg'] as const).map((sz) => (
-                          <button key={sz} onClick={() => setPrintSelectionSize(sz)} className={`flex-1 py-2 text-[10px] font-black rounded-lg uppercase transition-all ${printSize === sz ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500'}`}>{sz}</button>
+                      <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Manifest Scope</h4>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(['all', 'recent', 'custom'] as const).map((s) => (
+                          <button key={s} onClick={() => setPrintSelection(s)} className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${printSelection === s ? 'border-indigo-600 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-white' : 'border-gray-50 dark:border-gray-800 text-gray-400 dark:text-gray-500 hover:border-gray-200'}`}>{s}</button>
                         ))}
                       </div>
                     </div>
                     <div className="space-y-4">
-                      <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Replication</h4>
-                      <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-2 rounded-xl">
-                        <button onClick={() => setPrintCopies(Math.max(1, printCopies - 1))} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-400 dark:text-white"><Minus className="w-4 h-4" /></button>
-                        <span className="text-sm font-black dark:text-white">{printCopies}x</span>
-                        <button onClick={() => setPrintCopies(printCopies + 1)} className="p-1.5 bg-white dark:bg-gray-700 rounded-lg text-gray-400 dark:text-white"><PlusIcon className="w-4 h-4" /></button>
+                      <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Identification Protocol</h4>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(['qr', 'barcode', 'tag'] as const).map((f) => (
+                          <button key={f} onClick={() => setPrintFormat(f)} className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${printFormat === f ? 'border-amber-600 bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-white' : 'border-gray-50 dark:border-gray-800 text-gray-400 dark:text-gray-500 hover:border-gray-200'}`}>{f}</button>
+                        ))}
                       </div>
                     </div>
                   </div>
+
                   <div className="space-y-4 pt-4 border-t dark:border-gray-800">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Metadata Options</h4>
-                      <div className="flex items-center gap-2">
-                        <Palette className="w-3.5 h-3.5 text-gray-400 dark:text-white" />
-                        <div className="flex gap-1.5">
-                          {['bg-white', 'bg-yellow-50', 'bg-blue-50', 'bg-black'].map(c => (
-                            <button key={c} onClick={() => setPrintOptions({...printOptions, labelColor: c})} className={`w-5 h-5 rounded-full border border-gray-200 transition-all ${c} ${printOptions.labelColor === c ? 'scale-125 ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900' : 'hover:scale-110 shadow-sm'}`} />
-                          ))}
-                        </div>
-                      </div>
+                      <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Asset Selection Matrix</h4>
+                      <span className="text-[10px] font-black text-indigo-500 uppercase">{Object.keys(selectedPrintIds).length} Assets Selected</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-10 gap-y-4">
-                      {Object.entries(printOptions).map(([key, value]) => {
-                         if (typeof value !== 'boolean') return null;
-                         return (
-                          <div key={key} onClick={() => setPrintOptions({...printOptions, [key]: !value})} className="flex items-center justify-between cursor-pointer group">
+                    
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-3xl overflow-hidden border border-gray-100 dark:border-gray-800">
+                       <div className="max-h-[300px] overflow-y-auto custom-scrollbar p-2 space-y-2">
+                         {products.length === 0 ? (
+                           <div className="text-center py-10 text-xs font-bold text-gray-400 uppercase tracking-widest italic">Inventory ledger is empty</div>
+                         ) : (
+                           products.map(p => (
+                             <div 
+                               key={p.id} 
+                               className={`flex items-center gap-4 p-3 rounded-2xl transition-all ${selectedPrintIds[p.id] ? 'bg-white dark:bg-gray-900 shadow-sm border-2 border-indigo-100 dark:border-indigo-900/30' : 'bg-transparent border-2 border-transparent opacity-60'}`}
+                             >
+                               <button 
+                                onClick={() => togglePrintItem(p.id)}
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${selectedPrintIds[p.id] ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}
+                               >
+                                 {selectedPrintIds[p.id] && <Check className="w-4 h-4" />}
+                               </button>
+                               <div className="flex-1 min-w-0">
+                                 <div className="font-bold text-sm truncate dark:text-white">{p.name}</div>
+                                 <div className="text-[9px] font-mono opacity-50 uppercase">{p.sku}</div>
+                               </div>
+                               {selectedPrintIds[p.id] && (
+                                 <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl shrink-0">
+                                   <button onClick={() => updatePrintQuantity(p.id, -1)} className="p-1.5 hover:bg-white dark:hover:bg-gray-700 rounded-lg text-gray-400"><Minus className="w-3 h-3" /></button>
+                                   <span className="text-xs font-black dark:text-white min-w-[2ch] text-center">{selectedPrintIds[p.id]}</span>
+                                   <button onClick={() => updatePrintQuantity(p.id, 1)} className="p-1.5 hover:bg-white dark:hover:bg-gray-700 rounded-lg text-gray-400"><PlusIcon className="w-3 h-3" /></button>
+                                 </div>
+                               )}
+                             </div>
+                           ))
+                         )}
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-10 border-t dark:border-gray-800 pt-8">
+                    <div className="space-y-4">
+                      <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Metadata Toggle</h4>
+                      <div className="grid gap-4">
+                        {['showName', 'showSku', 'showPrice', 'showDate', 'securityMark'].map((key) => (
+                          <div key={key} onClick={() => setPrintOptions({...printOptions, [key]: !printOptions[key as keyof typeof printOptions]})} className="flex items-center justify-between cursor-pointer group">
                             <span className="text-xs font-bold text-gray-500 dark:text-white capitalize group-hover:text-indigo-500 transition-colors">{key.replace(/([A-Z])/g, ' $1')}</span>
-                            <div className={`w-9 h-5 rounded-full transition-all flex items-center px-0.5 ${value ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`}>
-                              <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${value ? 'translate-x-4' : 'translate-x-0'}`} />
+                            <div className={`w-9 h-5 rounded-full transition-all flex items-center px-0.5 ${(printOptions as any)[key] ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`}>
+                              <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${(printOptions as any)[key] ? 'translate-x-4' : 'translate-x-0'}`} />
                             </div>
                           </div>
-                         )
-                      })}
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                       <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em]">Studio Filter</h4>
+                       <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl">
+                          <div className="flex items-center gap-3 mb-2">
+                             <Palette className="w-4 h-4 text-gray-400" />
+                             <span className="text-[10px] font-black text-gray-400 uppercase">Label Substrate</span>
+                          </div>
+                          <div className="flex gap-2">
+                            {['bg-white', 'bg-yellow-50', 'bg-blue-50', 'bg-black'].map(c => (
+                              <button key={c} onClick={() => setPrintOptions({...printOptions, labelColor: c})} className={`w-8 h-8 rounded-xl border-2 transition-all ${c} ${printOptions.labelColor === c ? 'border-indigo-500 scale-110' : 'border-transparent opacity-60 hover:opacity-100'}`} />
+                            ))}
+                          </div>
+                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-6">
+
+                <div className="flex flex-col gap-6 lg:border-l lg:pl-10 dark:border-gray-800">
                   <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-300 uppercase tracking-[0.2em] px-1">Studio Visual Context</h4>
                   <LabelPreview />
-                  <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-[2rem] shadow-xl">
+                  <div className="flex-1 p-6 bg-zinc-900 border border-zinc-800 rounded-[2.5rem] shadow-xl flex flex-col justify-center">
                     <div className="flex items-start gap-4">
-                      <div className="p-2 bg-indigo-600 text-white rounded-xl shrink-0 shadow-[0_0_15px_rgba(79,70,229,0.4)]"><CheckCircle2 className="w-4 h-4" /></div>
+                      <div className="p-3 bg-indigo-600 text-white rounded-2xl shrink-0 shadow-[0_0_20px_rgba(79,70,229,0.3)]"><CheckCircle2 className="w-5 h-5" /></div>
                       <div>
-                        <h5 className="text-sm font-black text-zinc-100">Live Render Feed</h5>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 font-medium leading-relaxed">System using {printFormat === 'qr' ? 'Vector SVG' : 'Bilinear Scaling'} for industrial thermal clarity.</p>
+                        <h5 className="text-sm font-black text-zinc-100">Render Engine Active</h5>
+                        <p className="text-xs text-zinc-500 mt-2 font-medium leading-relaxed">System outputting {Object.values(selectedPrintIds).reduce((a, b) => a + b, 0)} labels across {Object.keys(selectedPrintIds).length} distinct assets using {printFormat.toUpperCase()} vector serialization.</p>
                       </div>
                     </div>
                   </div>
@@ -1089,7 +1104,12 @@ const App: React.FC = () => {
             </div>
             <div className="p-8 border-t dark:border-gray-800 flex gap-4 shrink-0 bg-gray-50/50 dark:bg-gray-900/50">
               <button onClick={() => setIsPrintModalOpen(false)} className="flex-1 py-4 bg-white dark:bg-gray-800 text-gray-600 dark:text-white rounded-2xl font-black uppercase tracking-widest text-[10px] border border-gray-100 dark:border-gray-700 transition-all hover:bg-gray-100 dark:hover:bg-gray-700">Abeyance</button>
-              <button onClick={() => { alert(`Executing print for ${printCopies} copies...`); setIsPrintModalOpen(false); }} className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"><Printer className="w-4 h-4" /> Commit to Output</button>
+              <button 
+                onClick={generateLabelPDF}
+                className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+              >
+                <Printer className="w-4 h-4" /> Commit To Manifest
+              </button>
             </div>
           </div>
         </div>
