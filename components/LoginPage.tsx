@@ -1,13 +1,14 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ShieldCheck, Lock, Mail, Fingerprint, Loader2, ArrowRight, Construction } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, Fingerprint, Loader2, ArrowRight, Construction, User } from 'lucide-react';
 
 interface LoginPageProps {
   onLogin: (userData: any) => void;
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -20,7 +21,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     // Simulate API Auth Latency
     setTimeout(() => {
       setIsLoading(false);
-      onLogin({ email, name: 'Sarah Wilson', role: 'Owner' });
+      // Use the entered name, or fallback to a name derived from email if empty
+      const displayName = name.trim() || email.split('@')[0].split('.').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ') || 'Authorized User';
+      onLogin({ 
+        email: email.toLowerCase(), 
+        name: displayName, 
+        role: 'Owner' 
+      });
     }, 1500);
   };
 
@@ -28,7 +35,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      onLogin({ email: 'sarah@contractorstock.ai', name: 'Sarah Wilson', role: 'Owner' });
+      onLogin({ 
+        email: 'sarah@contractorstock.ai', 
+        name: 'Sarah Wilson', 
+        role: 'Owner' 
+      });
     }, 1000);
   };
 
@@ -58,7 +69,24 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           </div>
 
           {authMethod === 'password' ? (
-            <form onSubmit={handleLogin} className="space-y-6">
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
+                  Full Legal Name
+                </label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    required
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter your name"
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
                   Employee ID / Email
@@ -109,7 +137,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3"
+                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3 mt-2"
               >
                 {isLoading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
