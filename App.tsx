@@ -5,6 +5,7 @@ import { db } from './services/database';
 import Scanner from './components/Scanner';
 import ProductForm from './components/ProductForm';
 import SettingsPage from './components/SettingsPage';
+import LoginPage from './components/LoginPage'; // New Import
 import { 
   Scan, 
   Package, 
@@ -52,7 +53,8 @@ import {
   ShieldAlert,
   ExternalLink,
   Info,
-  Layers
+  Layers,
+  Construction
 } from 'lucide-react';
 
 interface TeamMember {
@@ -75,6 +77,7 @@ interface PendingInvite {
 }
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('sv_auth') === 'true');
   const [currentView, setCurrentView] = useState<View>(View.DASHBOARD);
   const [products, setProducts] = useState<Product[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -147,7 +150,20 @@ const App: React.FC = () => {
 
   const memberPhotoInputRef = useRef<HTMLInputElement>(null);
 
-  // Fix: Added missing LabelPreview component to resolve the "Cannot find name 'LabelPreview'" error
+  const handleLogin = (userData: any) => {
+    setIsAuthenticated(true);
+    localStorage.setItem('sv_auth', 'true');
+    localStorage.setItem('sv_user_email', userData.email);
+    setCurrentView(View.DASHBOARD);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('sv_auth');
+    setCurrentView(View.DASHBOARD);
+  };
+
+  // Label Preview Component
   const LabelPreview = () => {
     return (
       <div className={`aspect-[4/3] w-full max-w-[300px] mx-auto ${printOptions.labelColor} border-2 border-gray-200 dark:border-gray-700 rounded-2xl shadow-inner flex flex-col items-center justify-center p-6 relative overflow-hidden transition-all duration-500`}>
@@ -633,6 +649,10 @@ const App: React.FC = () => {
       </div>
     </div>
   );
+
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-white transition-colors duration-300 flex flex-col">
