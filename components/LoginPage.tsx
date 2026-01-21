@@ -38,7 +38,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50 dark:bg-black overflow-hidden relative font-sans">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-black overflow-hidden relative font-sans">
       {/* Dynamic Background Blurs */}
       <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-600/10 rounded-full blur-[120px] pointer-events-none" />
@@ -152,6 +152,18 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">End-to-End Encryption Active</span>
           </div>
         </div>
+      </motion.div>
+
+      {/* Footer Text */}
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+        className="mt-8 text-center"
+      >
+        <p className="text-[10px] font-black text-gray-400 dark:text-gray-600 uppercase tracking-[0.25em]">
+          Darrow Industry reserved rights 2026
+        </p>
       </motion.div>
     </div>
   );

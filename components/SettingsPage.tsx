@@ -470,16 +470,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ onClearData, onDataImport, 
                 onChange={e => setNewLocation({...newLocation, name: e.target.value})}
                 className="flex-1 px-4 py-3 bg-white dark:bg-gray-800 rounded-xl text-sm font-bold border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none" 
               />
-              <select 
-                value={newLocation.type}
-                onChange={e => setNewLocation({...newLocation, type: e.target.value})}
-                className="px-4 py-3 bg-white dark:bg-gray-800 rounded-xl text-sm font-bold border border-gray-200 dark:border-gray-700 outline-none"
-              >
-                <option>Warehouse</option>
-                <option>Vehicle</option>
-                <option>Jobsite</option>
-                <option>Retail</option>
-              </select>
               <button onClick={addLocation} className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 active:scale-95 transition-all"><Plus className="w-5 h-5" /></button>
             </div>
           </div>
